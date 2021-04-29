@@ -1,0 +1,7 @@
+name: instancegeneration
+channels:
+  - defaults
+dependencies:
+  - click
+  - numpy
+
