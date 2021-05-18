@@ -1,6 +1,8 @@
+import math
 import numpy as np
 import os
 import os.path
+import warnings
 
 
 def from_binary(path):
@@ -128,7 +130,7 @@ def check_input_dimensions(instance):
         )
 
     # Test if the shape of the jump_points and weights arrays is equal
-    if weight_shape != jump_shape:
+    if weight_shape != (jump_shape[0], jump_shape[1] - 1):
         raise ValueError(
             f"The shape of the jump_points matrix {jump_shape} does not equal"
             f" the shape of the weights matrix {weight_shape}. A valid"
@@ -169,3 +171,183 @@ def check_input_dimensions(instance):
     # TODO: Include tests on the resource_availability.
 
     return True
+
+
+def to_binary(path, resource_requirement, jump_points, weights, bounds,
+              resource_availability):
+    """Write instance data to a binary file.
+
+    Parameters
+    ----------
+    path : str
+        Filename of outputfile (IMPORTANT: without extension).
+    resource_requirement : ndarray
+        One-dimensional array of real resource requirements.
+    jump_points : ndarray
+        Two-dimensional array of integer jump points.
+    weights : ndarray
+        Two-dimensional array of integer weights.
+    bounds : ndarray
+        Two-dimensional array of real lower and upper bounds.
+    resource_availability : ndarray
+        One-dimensional array of the amount of available resource.
+    """
+    # Check for existence of output file
+    if os.path.exists(f'{path}.npz'):
+        path = f'{path}_{datetime.datetime.now().strftime("%f")}'
+        warnings.warn(
+            "The provided label was already in use. The output will be"
+            f" written to \"{path}.npz\" instead."
+        )
+    np.savez(
+        path,
+        resource_requirement=resource_requirement,
+        jump_points=jump_points,
+        weights=weights,
+        bounds=bounds,
+        resource_availability=resource_availability
+    )
+
+
+def to_csv(path, resource_requirement, jump_points, weights, bounds,
+           resource_availability):
+    """Write instance data to five csv files.
+
+    Parameters
+    ----------
+    path : str
+        Path to output folder.
+    resource_requirement : ndarray
+        One-dimensional array of real resource requirements.
+    jump_points : ndarray
+        Two-dimensional array of integer jump points.
+    weights : ndarray
+        Two-dimensional array of integer weights.
+    bounds : ndarray
+        Two-dimensional array of real lower and upper bounds.
+    resource_availability : ndarray
+        One-dimensional array of the amount of available resource.
+    """
+    # Check for existence of output directory
+    if os.path.exists(path):
+        path = f'{path}_{datetime.datetime.now().strftime("%f")}'
+        warnings.warn(
+            "The provided label was already in use. The output will be"
+            f" written to \"{path}\" instead."
+        )
+    os.mkdir(path)
+
+    np.savetxt(
+        os.path.join(path, 'resource_requirement.csv'),
+        resource_requirement,
+        delimiter=';',
+        fmt='%1.2f'
+    )
+    np.savetxt(
+        os.path.join(path, 'jump_points.csv'),
+        jump_points,
+        delimiter=';',
+        fmt='%i'
+    )
+    np.savetxt(
+        os.path.join(path, 'weights.csv'),
+        weights,
+        delimiter=';',
+        fmt='%i'
+    )
+    np.savetxt(
+        os.path.join(path, 'bounds.csv'),
+        bounds,
+        delimiter=';',
+        fmt='%1.2f'
+    )
+    np.savetxt(
+        os.path.join(path, 'resource_availability.csv'),
+        resource_availability,
+        delimiter=';',
+        fmt='%1.2f'
+    )
+
+
+def generate_instance(njobs, avg_resource, std_resource, jumppoints, release_times):
+    """Generate a single instance of a single machine scheduling problem
+    with a regular step cost function.
+
+    Parameters
+    ----------
+    njobs : int
+        Number of jobs in the generated instance.
+    avg_resource : float
+        Mean of a normal distribution from which the amount of available
+        resource at each time step will be drawn.
+    std_resource : float
+        Standard deviation of a normal distribution from which the amount
+        of available resource at each time step will be drawn.
+    jumppoints : int
+        Number of jump points in the cost functions of each job.
+    release_times : bool
+        Generate release_times.
+    """
+    # Sample njobs random processing times
+    resource_requirement = np.random.uniform(
+        low=0.0,
+        high=100*avg_resource,
+        size=njobs
+    ).round(decimals=2)
+
+    # We take the expected processing time per machine as an upperbound
+    # for jumppoint generation.
+    total_time = math.ceil(sum(resource_requirement) / avg_resource)
+
+    # Sample a (njobs, jumppoints)-matrix of jump points
+    if release_times:
+        jump_points = np.array([
+            np.sort(np.random.randint(low=math.ceil(pt / avg_resource),
+                                      high=total_time, size=jumppoints + 1))
+            for pt in resource_requirement
+        ])
+    else:
+        jump_points = np.array([
+            np.concatenate((
+                [0],
+                np.sort(np.random.randint(low=math.ceil(pt / avg_resource),
+                                          high=total_time, size=jumppoints))
+            ))
+            for pt in resource_requirement
+        ])
+    # Sample a (njobs, jumppoints)-matrix of cost/reward levels
+    weights = np.random.randint(
+        low=1,
+        high=100,
+        size=(njobs, jumppoints)
+    )[..., ::-1].cumsum(axis=-1)[..., ::-1]  # reverse sum the rewards
+
+    # Sample bounds on resource consumption
+    lower_bounds = np.array([
+        np.random.uniform(
+            low=0.0,
+            high=min(0.25 * avg_resource, 0.25 * pt)
+        )
+        for pt in resource_requirement
+    ]).round(decimals=2)
+    upper_bounds = np.array([
+        np.random.uniform(
+            low=0.25*pt,
+            high=pt
+        )
+        for pt in resource_requirement
+    ]).round(decimals=2)
+    bounds = np.concatenate(
+        [lower_bounds.reshape(-1,1), upper_bounds.reshape(-1,1)],
+        axis=1
+    )
+
+    # Sample resource availability
+    resource_availability = np.random.normal(
+        loc=avg_resource,
+        scale=std_resource,
+        size=math.ceil(1.5 * total_time / njobs + 1)
+    ).round(decimals=2)
+
+    return (resource_requirement, jump_points, weights, bounds,
+            resource_availability)
