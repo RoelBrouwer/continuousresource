@@ -1,0 +1,8 @@
+name: solve
+channels:
+  - conda-forge
+dependencies:
+  - click
+  - numpy
+  - pulp
+
