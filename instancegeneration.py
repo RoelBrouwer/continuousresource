@@ -4,6 +4,7 @@ import os.path
 
 from instance import to_binary, to_csv, generate_instance
 
+
 @click.command(context_settings=dict(help_option_names=['-h', '--help']))
 @click.option(
     '--njobs',
@@ -116,7 +117,9 @@ def main(njobs, avg_resource, std_resource, jumppoints, release_times,
     of resource.
     """
     (resource_requirement, jump_points, weights, bounds,
-    resource_availability) = generate_instance(njobs, avg_resource, std_resource, jumppoints, release_times)
+     resource_availability) = generate_instance(njobs, avg_resource,
+                                                std_resource, jumppoints,
+                                                release_times)
 
     if exportformat in ['both', 'binary']:
         path = os.path.join(exportpath, label)

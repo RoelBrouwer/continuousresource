@@ -1,3 +1,4 @@
+import datetime
 import math
 import numpy as np
 import os
@@ -66,7 +67,8 @@ def from_csv(path):
             - `resource_availability`, containing a one-dimensional
               array.
     """
-    np.genfromtxt(os.path.join(path, 'resource_requirement.csv'), delimiter=';')
+    np.genfromtxt(os.path.join(path, 'resource_requirement.csv'),
+                  delimiter=';')
     instance = {
         'resource_requirement': np.genfromtxt(
             os.path.join(path, 'resource_requirement.csv'),
@@ -269,7 +271,8 @@ def to_csv(path, resource_requirement, jump_points, weights, bounds,
     )
 
 
-def generate_instance(njobs, avg_resource, std_resource, jumppoints, release_times):
+def generate_instance(njobs, avg_resource, std_resource, jumppoints,
+                      release_times):
     """Generate a single instance of a single machine scheduling problem
     with a regular step cost function.
 
@@ -338,7 +341,7 @@ def generate_instance(njobs, avg_resource, std_resource, jumppoints, release_tim
         for pt in resource_requirement
     ]).round(decimals=2)
     bounds = np.concatenate(
-        [lower_bounds.reshape(-1,1), upper_bounds.reshape(-1,1)],
+        [lower_bounds.reshape(-1, 1), upper_bounds.reshape(-1, 1)],
         axis=1
     )
 
