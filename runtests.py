@@ -8,7 +8,7 @@ import shutil
 import time
 
 from instance import from_binary, from_csv
-from mipmodels import TimeIndexed
+from mipmodels import TimeIndexedNoDeadline
 
 
 @click.command(context_settings=dict(help_option_names=['-h', '--help']))
@@ -99,14 +99,16 @@ def main(format, path, solver, output_dir, label, skip_approaches):
             if 'ti_mip' not in skip_approaches:
                 # TI based MIP
                 t_start_ti_mip = time.perf_counter()
-                mip = TimeIndexed(instance, f"{partial_label}_ti_mip")
+                mip = TimeIndexedNoDeadline(instance,
+                                            f"{partial_label}_ti_mip")
                 mip.solve(solver)
                 t_end_ti_mip = time.perf_counter()
                 ti_mip_c = pulp.value(mip.problem.objective)
 
                 # TI based relaxed MIP
                 t_start_ti_mip_relax = time.perf_counter()
-                mip = TimeIndexed(instance, f"{partial_label}_ti_mip_relaxed")
+                mip = TimeIndexedNoDeadline(instance,
+                                            f"{partial_label}_ti_mip_relaxed")
                 mip.relax_problem()
                 mip.solve(solver)
                 t_end_ti_mip_relax = time.perf_counter()

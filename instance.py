@@ -349,7 +349,7 @@ def generate_instance(njobs, avg_resource, std_resource, jumppoints,
     resource_availability = np.random.normal(
         loc=avg_resource,
         scale=std_resource,
-        size=math.ceil(1.5 * total_time / njobs + 1)
+        size=math.ceil(1.5 * total_time + 1)
     ).round(decimals=2)
 
     return (resource_requirement, jump_points, weights, bounds,

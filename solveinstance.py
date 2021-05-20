@@ -7,7 +7,7 @@ import pulp
 import shutil
 
 from instance import from_binary, from_csv
-from mipmodels import TimeIndexed
+from mipmodels import TimeIndexedNoDeadline
 
 
 @click.command(context_settings=dict(help_option_names=['-h', '--help']))
@@ -67,7 +67,7 @@ from mipmodels import TimeIndexed
     default=datetime.datetime.now().strftime("%Y%m%d_%H%M%S%f"),
     help="Sufficiently unique label or name for the instance."
 )
-def main(format, path, model, machines, solver, output_dir, label):
+def main(format, path, model, solver, output_dir, label):
     """Solve a single instance of a single machine scheduling problem
     with a regular step cost function.
 
@@ -102,7 +102,7 @@ def main(format, path, model, machines, solver, output_dir, label):
         raise ValueError("Unsupported input format, must be binary or csv.")
 
     if model == 'ti':
-        mdl = TimeIndexed(instance, label)
+        mdl = TimeIndexedNoDeadline(instance, label)
     else:
         raise ValueError(f"'{model}' is not recognized as an implemented"
                          " model")
