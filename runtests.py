@@ -74,7 +74,7 @@ def main(format, path, solver, output_dir, label, skip_approaches):
     with open(os.path.join(output_dir,
                            f"{label}_summary.csv"), "w") as csv:
         csv.write(
-            'n;k;r;s;'
+            'n;k;m;s;r;'
             'ti_mip_t;ti_mip_c;ti_mip_r_t;ti_mip_r_c\n'
         )
         for inst in os.listdir(path):
@@ -94,7 +94,8 @@ def main(format, path, solver, output_dir, label, skip_approaches):
             os.mkdir(os.path.join(output_dir, instance_name))
 
             partial_label = f"{label}_{instance_name}"
-            params = re.match(r'n(\d+)k(\d+)r(\d+)s(\d+)', instance_name)
+            params = re.match(r'n(\d+)k(\d+)m(\d+.\d+)s(\d+.\d+)r(\d+)',
+                              instance_name)
 
             if 'ti_mip' not in skip_approaches:
                 # TI based MIP
@@ -104,6 +105,8 @@ def main(format, path, solver, output_dir, label, skip_approaches):
                 mip.solve(solver)
                 t_end_ti_mip = time.perf_counter()
                 ti_mip_c = pulp.value(mip.problem.objective)
+                if ti_mip_c == None:
+                    ti_mip_c = -1.0
 
                 # TI based relaxed MIP
                 t_start_ti_mip_relax = time.perf_counter()
@@ -113,6 +116,8 @@ def main(format, path, solver, output_dir, label, skip_approaches):
                 mip.solve(solver)
                 t_end_ti_mip_relax = time.perf_counter()
                 ti_mip_r_c = pulp.value(mip.problem.objective)
+                if ti_mip_r_c == None:
+                    ti_mip_r_c = -1.0
             else:
                 # Skip TI, as it is really slow
                 t_start_ti_mip = -1.0
@@ -136,7 +141,7 @@ TI based MIP relaxation (s): {t_end_ti_mip_relax - t_start_ti_mip_relax:0.2f}
             # Build-up CSV-file
             csv.write(
                 f'{params.group(1)};{params.group(2)};{params.group(3)};'
-                f'{params.group(4)};'
+                f'{params.group(4)};{params.group(5)};'
                 f'{t_end_ti_mip - t_start_ti_mip:0.2f};{ti_mip_c:.0f};'
                 f'{t_end_ti_mip_relax - t_start_ti_mip_relax:0.2f};'
                 f'{ti_mip_r_c:.0f}\n'
