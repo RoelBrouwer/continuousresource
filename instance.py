@@ -294,7 +294,7 @@ def generate_instance(njobs, avg_resource, std_resource, jumppoints,
     # Sample njobs random processing times
     resource_requirement = np.random.uniform(
         low=0.0,
-        high=100*avg_resource,
+        high=100.0,  # *avg_resource,
         size=njobs
     ).round(decimals=2)
 
@@ -305,7 +305,7 @@ def generate_instance(njobs, avg_resource, std_resource, jumppoints,
     # Sample a (njobs, jumppoints)-matrix of jump points
     if release_times:
         jump_points = np.array([
-            np.sort(np.random.randint(low=math.ceil(pt / avg_resource),
+            np.sort(np.random.randint(low=0,
                                       high=total_time, size=jumppoints + 1))
             for pt in resource_requirement
         ])
@@ -349,8 +349,9 @@ def generate_instance(njobs, avg_resource, std_resource, jumppoints,
     resource_availability = np.random.normal(
         loc=avg_resource,
         scale=std_resource,
-        size=math.ceil(1.5 * total_time + 1)
+        size=math.ceil(2 * total_time + 1)
     ).round(decimals=2)
+    resource_availability[resource_availability<0] = 0.0
 
     return (resource_requirement, jump_points, weights, bounds,
             resource_availability)
