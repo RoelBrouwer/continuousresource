@@ -1,0 +1,9 @@
+name: cplexenv
+channels:
+  - conda-forge
+dependencies:
+  - click
+  - numpy
+  - pulp
+  - python=3.8
+
