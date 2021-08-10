@@ -39,8 +39,8 @@ class LP(ABC):
         """Solve the LP."""
         # self._problem.export_as_lp(os.getcwd())
         if self._solver == 'cplex':
-            self._problem.solve(log_output=True)
-            self._problem.print_solution()
+            self._problem.solve()  #log_output=True)
+            # self._problem.print_solution()
         else:
             raise NotImplementedError
 
@@ -130,8 +130,8 @@ class OrderBasedSubProblem(LP):
         # Not necessary if all jobs have exactly one start and completion
         # time.
         # event_map.fill(-1)
-        for i in range(eventlist.shape[0]):
-            event_map[eventlist[i, 1], eventlist[i, 0]] = i
+        for i in range(len(eventlist)):
+            event_map[eventlist[i][1], eventlist[i][0]] = i
         return event_map
 
     def initialize_problem(self):

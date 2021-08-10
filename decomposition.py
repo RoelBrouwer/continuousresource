@@ -44,7 +44,7 @@ class EventOrderMasterProblem(ABC):
         # TODO: implement this properly,
         raise NotImplementedError
 
-    def compute_precedence_matrix(self, eventlist, bool_expr):
+    def compute_precedence_matrix(self, eventlist, bool_expr=None):
         """Computes a precedence matrix on the events based on the job
         properties.
 
@@ -59,6 +59,9 @@ class EventOrderMasterProblem(ABC):
             event should preceed the first, and False otherwise.
             Two rows of ``eventlist'' are its input, as is a reference to
             a list of job_properties.
+            Default function that is used only defines precedence
+            relations between events belonging to the same job, assuming
+            they have to be done in order of their event type ID.
 
         Returns
         -------
@@ -68,6 +71,15 @@ class EventOrderMasterProblem(ABC):
             comes before i. I.e., only if the sum of row i is 0, the
             event can occur freely.
         """
+        def default_test(i, j, job_properties):
+            """Default precedence test"""
+            if (i[1] == j[1] and i[0] > j[0]):
+                return True
+            return False
+
+        if bool_expr is None:
+            bool_expr = default_test
+
         prec_matrix = np.array(
             [
                 [
@@ -79,6 +91,51 @@ class EventOrderMasterProblem(ABC):
             dtype=bool
         )
         return prec_matrix
+
+    def get_random_order(self, eventlist, prec_matrix=None):
+        """Returns a random event order that respects (precomputed)
+        precedence relations.
+
+        Parameters
+        ----------
+        eventlist : list of list of int
+            List of lists of length two, representing the events in the
+            eventlist being built. First element in each lists is the
+            event type, second element the job ID.
+        prec_matrix : ndarray
+            Two-dimensional array (|E| x |E|) representing the precedence
+            relations between events. A 1 on position [i, j] means that j
+            comes before i. I.e., only if the sum of row i is 0, the
+            event can occur freely.
+
+        Returns
+        -------
+        list of list of int
+            List of lists of length two, representing the events in the
+            eventlist. First element in each lists is the event type,
+            second element the job ID.
+        """
+        if prec_matrix is None:
+            # Compute a basic precedence matrix
+            prec_matrix = self.compute_precedence_matrix(eventlist)
+
+        random_list = [
+            [0, 0] for i in range(len(eventlist))
+        ]
+
+        for i in range(len(eventlist)):
+            # Indices of events that are "precedent-free"
+            opt = np.where(np.all(~prec_matrix, axis=1))[0]
+            if (len(opt) > 0):
+                selected = np.random.choice(opt)
+                random_list[i] = eventlist[selected]
+                prec_matrix = np.delete(prec_matrix, selected, 0)
+                prec_matrix = np.delete(prec_matrix, selected, 1)
+                del eventlist[selected]
+            else:
+                return None
+
+        return random_list
 
 
 class EventOrderEnumeration(EventOrderMasterProblem):

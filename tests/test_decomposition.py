@@ -33,7 +33,7 @@ if __name__ == "__main__":
     # Correct in theory, but sensitive to floating point errors. TO FIX.
 
     def all_redux(i, j, job_properties):
-        if (i[1] == j[1] and i[0] == 1 and j[0] == 0):
+        if (i[1] == j[1] and i[0] > j[0]):
             return True
 
         return (
@@ -47,7 +47,7 @@ if __name__ == "__main__":
         )
 
     def all_redux_stable(i, j, job_properties):
-        if (i[1] == j[1] and i[0] == 1 and j[0] == 0):
+        if (i[1] == j[1] and i[0] > j[0]):
             return True
 
         a = (
