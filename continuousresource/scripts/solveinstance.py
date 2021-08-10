@@ -6,8 +6,8 @@ import os.path
 import pulp
 import shutil
 
-from instance import from_binary, from_csv
-from mipmodels import TimeIndexedNoDeadline
+from continuousresource.instance import from_binary, from_csv
+from continuousresource.mipmodels import TimeIndexedNoDeadline
 
 
 @click.command(context_settings=dict(help_option_names=['-h', '--help']))

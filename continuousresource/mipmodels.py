@@ -80,7 +80,7 @@ class MIP(ABC):
                 options=None,
                 path=None,
                 threads=None,
-                timeLimit=None,
+                timeLimit=3600,
                 warmStart=False
             )
         elif solver == 'gurobi':

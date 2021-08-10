@@ -2,7 +2,7 @@ import click
 import datetime
 import os.path
 
-from instance import to_binary, to_csv, generate_instance
+from continuousresource.instance import to_binary, to_csv, generate_instance
 
 
 @click.command(context_settings=dict(help_option_names=['-h', '--help']))

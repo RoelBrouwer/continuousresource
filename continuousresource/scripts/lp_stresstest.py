@@ -1,7 +1,7 @@
 import numpy as np
 
-from linprog import OrderBasedSubProblem
-from decomposition import EventOrderMasterProblem
+from continuousresource.linprog import OrderBasedSubProblem
+from continuousresource.decomposition import EventOrderMasterProblem
 
 
 def stresstest(job_props, bool_func):
@@ -58,7 +58,8 @@ def random_instance(n, p):
 
     return instance
 
-if __name__ == "__main__":
+
+def main():
     def redux(i, j, job_properties):
         if (i[1] == j[1] and i[0] > j[0]):
             return True
@@ -98,3 +99,7 @@ if __name__ == "__main__":
         for j in range(pair[1]):
             instance = random_instance(pair[0], 4)
             stresstest(instance, redux)
+
+
+if __name__ == "__main__":
+    main()
