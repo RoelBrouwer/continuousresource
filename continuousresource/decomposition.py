@@ -2,7 +2,8 @@ from abc import ABC
 from abc import abstractmethod
 import numpy as np
 
-from continuousresource.linprog import OrderBasedSubProblem
+from continuousresource.mathematicalprogramming.linprog \
+    import OrderBasedSubProblem
 
 
 class EventOrderMasterProblem(ABC):

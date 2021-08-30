@@ -1,4 +1,4 @@
 from continuousresource.decomposition import *  # noqa
 from continuousresource.instance import *  # noqa
-from continuousresource.linprog import *  # noqa
-from continuousresource.mipmodels import *  # noqa
+from continuousresource.mathematicalprogramming import *  # noqa
+from continuousresource.simulatedannealing import *  # noqa

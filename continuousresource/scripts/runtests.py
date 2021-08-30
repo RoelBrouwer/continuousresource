@@ -8,7 +8,8 @@ import shutil
 import time
 
 from continuousresource.instance import from_binary, from_csv
-from continuousresource.mipmodels import TimeIndexedNoDeadline
+from continuousresource.mathematicalprogramming.mipmodels \
+    import TimeIndexedNoDeadline
 
 
 @click.command(context_settings=dict(help_option_names=['-h', '--help']))

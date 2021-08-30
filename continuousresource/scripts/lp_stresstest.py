@@ -1,6 +1,7 @@
 import numpy as np
 
-from continuousresource.linprog import OrderBasedSubProblem
+from continuousresource.mathematicalprogramming.linprog \
+    import OrderBasedSubProblem
 from continuousresource.decomposition import EventOrderMasterProblem
 
 
