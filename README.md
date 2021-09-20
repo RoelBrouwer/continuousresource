@@ -29,7 +29,7 @@ Implementation and comparison of a number of different approaches for solving a 
 
 ### License
 
-The code in this project is released under _[License name](LICENSE)._
+The code in this project is released under the _[MIT license](LICENSE)._
 <!-- Update later -->
 
 ### Attribution and academic use
