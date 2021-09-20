@@ -1,5 +1,7 @@
 # Models and algorithms for solving variants of the continuous resource scheduling problem
 
+Implementation and comparison of a number of different approaches for solving a resource assignment scheduling problem. 
+
 ## Table of Contents
 
 - [Models and algorithms for solving variants of the continuous resource scheduling problem](#models-and-algorithms-for-solving-variants-of-the-continuous-resource-scheduling-problem)
@@ -48,19 +50,19 @@ In the current version, solvers other than CPLEX are only supported for a subset
 
 #### CPLEX
 1. Obtain a copy of [IBM's ILOG CPLEX Optimization Studio](https://www.ibm.com/products/ilog-cplex-optimization-studio). At the time of writing, v12.10.0 is the most recent version.
-2. The installation wizard will tell you what to do to expose the CPLEX Python API. If not, follow [this guide](https://www.ibm.com/support/knowledgecenter/SSSA5P_12.10.0/ilog.odms.cplex.help/CPLEX/GettingStarted/topics/set_up/Python_setup.html).
+2. The installation wizard will tell you what to do to expose the CPLEX Python API. If not, follow [the CPLEX Python setup guide](https://www.ibm.com/support/knowledgecenter/SSSA5P_12.10.0/ilog.odms.cplex.help/CPLEX/GettingStarted/topics/set_up/Python_setup.html).
 
 #### Gurobi
 1. Obtain a copy of [Gurobi Optimizer](https://www.gurobi.com/downloads/). At the time of writing, v9.0.2 is the most recent version.
 2. After installation, the Python API of Gurobi should be ready for use.
     - If you start a "fresh" [conda](https://docs.conda.io/) environment, be aware that the current version of `gurobi` requires your Python version to be `<3.8`.
-    - You can get around this by manually setting up the `gurobi` package from the source of you Gurobi Optimizer copy. See [this community question](https://support.gurobi.com/hc/en-us/community/posts/360059881591-Gurobi-with-python-version-3-8) and its answers (in particular [this one](https://support.gurobi.com/hc/en-us/community/posts/360059881591/comments/360012744731)) for more details.
+    - You can get around this by manually setting up the `gurobi` package from the source of you Gurobi Optimizer copy. See [this community question on using Gurobi with higher Python versions](https://support.gurobi.com/hc/en-us/community/posts/360059881591-Gurobi-with-python-version-3-8) and its answers (in particular [this one](https://support.gurobi.com/hc/en-us/community/posts/360059881591/comments/360012744731)) for more details.
 
 ### Installation
 
 It is recommended that you use [conda](https://docs.conda.io/) to manage your environment. If you choose to configure your environment manually, be sure to install the dependencies listed in the appropriate `.yml` files, and ignore steps 1 and 4.
 
-1. Install conda by following the instructions on [this page](https://conda.io/projects/conda/en/latest/user-guide/install/index.html).
+1. Install conda by following the [installation instructions](https://conda.io/projects/conda/en/latest/user-guide/install/index.html).
 2. Clone this git repository into a directory on your local system.
 
 with HTTPS:
@@ -87,9 +89,18 @@ If you have set up the solvers as instructed in the [prerequisites section](#pre
 
 ## Usage
 
-_Placeholder._
+You can use the package by importing any of the functions or classes from the continuousresource package. Look at the [Placeholder for a link to generated documentation]() for detailed technical documentation.
 
-**!!Usage instructions are not fully up-to-date!!**
+Example uses and related scripts are located in the [`continuousresource/scripts` folder](continuousresource/scripts):
+- [`instancegeneration.py`](continuousresource/scripts/instancegeneration.py): generates a single problem instance
+- [`lp_stresstest.py`](continuousresource/scripts/lp_stresstest.py): creates and solves an LP based on a number of randomly generated instances
+- [`multipleinstancegeneration.py`](continuousresource/scripts/multipleinstancegeneration.py): like `instancegeneration.py`, but generating instances in bulk for a large number of parameter combinations
+- [`runtests.py`](continuousresource/scripts/runtests.py): solves the same problem instance with a number of different techniques and compares the results.
+- [`solveinstance.py`](continuousresource/scripts/instancegeneration.py): solve a single problem instance using a single approach
+- [`test_simulated_annealing.py`](continuousresource/scripts/test_simulated_annealing.py): testrun implementing a simulated annealing approach
+
+
+Two quick example uses are described in detail below.
 
 ### Generating instances
 
@@ -100,7 +111,7 @@ conda activate instancegeneration
 ```
 3. Run the instancegeneration script with the appropriate parameters, e.g.:
 ```sh
-python instancegeneration.py -n 5 -m 1 -k 2 -f both -p data/smallinstance
+python scripts/instancegeneration.py -n 5 -m 1 -k 2 -f both -p data/smallinstance
 ```
 Note: make sure to create the `data` directory first, when running this example command as-is.
 
@@ -113,7 +124,7 @@ conda activate solve
 ```
 3. Run the solveinstance script with the appropriate parameters, e.g.:
 ```sh
-python solveinstance.py -f csv -p data/smallinstance -m dof -e 1 -s glpk -o results
+python scripts/solveinstance.py -f csv -p data/smallinstance -m dof -e 1 -s glpk -o results
 ```
 Note: make sure to create the `results` directory first, when running this example command as-is.
 
