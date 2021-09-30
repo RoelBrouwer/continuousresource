@@ -4,7 +4,8 @@ eventual automation/parameterization (with pytest) in mind.
 """
 import numpy as np
 
-from linprog import OrderBasedSubProblem
+from continuousresource.mathematicalprogramming.linprog \
+    import OrderBasedSubProblem
 
 
 def test_small_instance():

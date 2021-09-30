@@ -4,7 +4,7 @@ eventual automation/parameterization (with pytest) in mind.
 """
 import numpy as np
 
-from decomposition import EventOrderMasterProblem
+from continuousresource.decomposition import EventOrderMasterProblem
 
 
 def test_precedence_matrix_computation(job_properties, event_list, bool_func):

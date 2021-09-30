@@ -1,1 +1,1 @@
-from simulatedannealing import *  # noqa
+from .simulatedannealing import *  # noqa

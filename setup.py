@@ -17,7 +17,8 @@ setup(
             'multipleinstancegeneration = continuousresource.scripts.'
                 'multipleinstancegeneration:main',
             'runtests = continuousresource.scripts.runtests:main',
-            'solveinstance = continuousresource.scripts.solveinstance:main'
+            'solveinstance = continuousresource.scripts.solveinstance:main',
+            'test_simulated_annealing = continuousresource.scripts.test_simulated_annealing:main'
         ]
     }
 )
