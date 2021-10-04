@@ -58,35 +58,30 @@ class SearchSpace():
     def current(self):
         return self._current_solution
 
-    def generate_initial_solution(self, eventlist, jobs, resource):
+    def generate_initial_solution(self, model_class, eventlist, *args, **kwargs):
         """Generates an initial solution within the search space and sets
         the value of self._current_solution accordingly.
 
         Parameters
         ----------
+        model_class : str
+            Class name of the class implementing the state model.
         eventlist : ndarray
             Two-dimensional (|E| x 2) array representing the events in the
             problem, where the first column contains an integer indicating
             the event type (0 for start, 1 for completion) and the second
             column the associated job ID.
-        jobs : ndarray
-            Two-dimensional (n x 7) array containing job properties:
-                - 0: resource requirement (E_j);
-                - 1: resource lower bound (P^-_j);
-                - 2: resource upper bound (P^+_j);
-                - 3: release date (r_j);
-                - 4: deadline (d_j);
-                - 5: weight (W_j);
-                - 6: objective constant (B_j).
-        resource : float
-            Amount of resource available per time unit. Required to be
-            constant for now.
+        *args :
+            Should contain exactly the (non-keyword) arguments required
+            by the constructor of `model_class`, other than `eventlist`.
+        **kwargs :
+            Should contain exactly the keyword arguments required by the
+            constructor of `model_class`, other than `eventlist`. 
         """
         # For now the initial solution is just the eventlist exactly as
         # presented.
         initial = SearchSpaceState(self, eventlist)
-        initial.create_model(OrderBasedSubProblem, eventlist, jobs, resource,
-                             "simann_model")
+        initial.create_model(model_class, eventlist, *args, **kwargs)
         # print(initial.model.problem.lp_string)
         self._current_solution = initial
         self._best_solution = copy.copy(initial)

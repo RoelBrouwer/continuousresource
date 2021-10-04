@@ -166,7 +166,7 @@ class OrderBasedSubProblem(LP):
             self._job_properties[j, 6]
             for j in range(len(self._job_properties))
         )
-        self._obj = self._problem.minimize(self._cost)
+        self._problem.minimize(self._cost)
 
         # Initialize constraints
         self._c_order = np.zeros(shape=len(self._event_list) - 1,
@@ -260,9 +260,6 @@ class OrderBasedSubProblem(LP):
         if job1 == job2 and type1 == 1:
             raise RuntimeError("Cannot put a job's completion before its"
                                " start.")
-        # We could update the event list & map as well, but keeping them
-        # in their original order, allows us to maintain the relation of
-        # the variable names to the position in the (original) event list
 
         # update self._event_list
         self._event_list[[first_idx, first_idx + 1], :] = \
@@ -327,8 +324,6 @@ class OrderBasedSubProblem(LP):
         self._times[[first_idx, first_idx + 1]] = \
             self._times[[first_idx + 1, first_idx]]
 
-        # TODO: Also the constraints for the preceding and following
-        # intervals need to be updated.
         # update appropriate self._c_lower & self._c_upper
         if type1 == 1:
             # Delayed completion, so bounds need to be enforced for an
@@ -471,3 +466,214 @@ class OrderBasedSubProblem(LP):
     def print_solution(self):
         """Print a human readable version of the (current) solution."""
         pass
+
+
+class OrderBasedSubProblemWithSlack(OrderBasedSubProblem):
+    """Class implementing the subproblem for a decomposition approach
+    that determines a schedule, given an event order.
+
+    Parameters
+    ----------
+    eventlist : ndarray
+        Two-dimensional (|E| x 2) array representing the events in the
+        problem, where the first column contains an integer indicating
+        the event type (0 for start, 1 for completion) and the second
+        column the associated job ID.
+    jobs : ndarray
+        Two-dimensional (n x 7) array containing job properties:
+            - 0: resource requirement (E_j);
+            - 1: resource lower bound (P^-_j);
+            - 2: resource upper bound (P^+_j);
+            - 3: release date (r_j);
+            - 4: deadline (d_j);
+            - 5: weight (W_j);
+            - 6: objective constant (B_j).
+    resource : float
+        Amount of resource available per time unit. Required to be
+        constant for now.
+    slackpenalties : list of float
+        List of penalty terms for the different forms of slack in the
+        model. In order:
+            - 0: penalty for every unit of resource above capacity during
+              an interval;
+            - 1: penalty for every unit of resource above or below the
+              upper or lower bound of a job during an interval.
+    label : str
+        Label or name for the (solved) instance. Be sure to use one that
+        is sufficiently unique, to avoid conflicts or other unexpected
+        behavior.
+    solver : {'cplex'}
+        The solver that will be used to solve the LP constructed from the
+        provided instance. Currently only CPLEX is supported.
+    """
+    def __init__(self, eventlist, jobs, resource, slackpenalties, label,
+                 solver='cplex'):
+        self._penalty_capacity = slackpenalties[0]
+        self._penalty_bounds = slackpenalties[1]
+
+        super().__init__(eventlist, jobs, resource, label, solver)
+
+    def initialize_problem(self):
+        super().initialize_problem()
+
+        # Create slack variables
+        self._slack_resource = np.zeros(shape=len(self._event_list),
+                                        dtype=object)
+        self._slack_upperbound = np.zeros(
+            shape=(len(self._job_properties), len(self._event_list)),
+            dtype=object
+        )
+        self._slack_lowerbound = np.zeros(
+            shape=(len(self._job_properties), len(self._event_list)),
+            dtype=object
+        )
+
+        for e in range(len(self._event_list)):
+            self._slack_resource[e] = self._problem.continuous_var(
+                name=f"st_{e}",
+                lb=0
+            )
+
+        for j in range(len(self._job_properties)):
+            for e in range(self._event_map[j, 0], self._event_map[j, 1]):
+                self._slack_upperbound[j, e] = self._problem.continuous_var(
+                    name=f"s+_{j},{e}",
+                    lb=0
+                )
+                self._slack_lowerbound[j, e] = self._problem.continuous_var(
+                    name=f"s-_{j},{e}",
+                    lb=0
+                )
+
+        # Add slack term to objective
+        # TODO: test if this actually works...
+        self._cost += self._problem.sum(
+            self._penalty_capacity * self._slack_resource[i] +
+            self._problem.sum(
+                self._penalty_bounds *
+                (self._slack_lowerbound[j, i] + self._slack_upperbound[j, i])
+                for j in range(len(self._job_properties))
+            )
+            for i in range(len(self._event_list))
+        )
+        # self._problem.objective_expr = self._cost
+
+        # Add slack variables to appropriate constraints
+        # TODO: test if this actually works...
+        for e in range(len(self._event_list) - 1):
+            # 7. Resource availability
+            self._c_availability[e].lhs -= self._slack_resource[e]
+
+        for j in range(len(self._job_properties)):
+            for e in range(self._event_map[j, 0], self._event_map[j, 1]):
+                # 5. Lower bound
+                self._c_lower[j, e].lhs += self._slack_lowerbound[j, e]
+                # 6. Upper bound
+                self._c_upper[j, e].lhs -= self._slack_upperbound[j, e]
+
+    def update_swap_neighbors(self, first_idx):
+        # TODO: test if this actually works...
+        super().update_swap_neighbors(first_idx)
+        job2 = self._event_list[first_idx, 1]
+        type2 = self._event_list[first_idx, 0]
+        job1 = self._event_list[first_idx + 1, 1]
+        type1 = self._event_list[first_idx + 1, 0]
+
+        # update appropriate self._c_order and self._c_availability
+        if first_idx > 0:
+            self._c_availability[first_idx - 1].lhs -= \
+                self._slack_resource[first_idx - 1]
+        self._c_availability[first_idx].lhs -= self._slack_resource[first_idx]
+        if first_idx + 2 < len(self._event_list):
+            self._c_availability[first_idx + 1].lhs -= \
+                self._slack_resource[first_idx + 1]
+
+        # update appropriate self._c_lower & self._c_upper
+        if type1 == 1:
+            # Delayed completion, so bounds need to be enforced for an
+            # additional interval (now completes at the start of
+            # first_index + 1, i.e. has to be enforced during the
+            # preceding interval
+            if not isinstance(self._slack_lowerbound[job1, first_idx],
+                              docplex.mp.dvar.Var):
+                self._slack_lowerbound[job1, first_idx] = \
+                    self._problem.continuous_var(
+                        name=f"s-_{job1},{first_idx}",
+                        lb=0
+                    )
+                self._slack_upperbound[job1, first_idx] = \
+                    self._problem.continuous_var(
+                        name=f"s+_{job1},{first_idx}",
+                        lb=0
+                    )
+                self._cost += self._penalty_bounds * \
+                    (self._slack_lowerbound[job1, first_idx] +
+                     self._slack_upperbound[job1, first_idx])
+            # 5. Lower bound
+            self._c_lower[job1, first_idx].lhs += \
+                self._slack_lowerbound[job1, first_idx]
+            # 6. Upper bound
+            self._c_upper[job1, first_idx].lhs -= \
+                self._slack_upperbound[job1, first_idx]
+            # In addition, the time variables need to be updated in two
+            # more constraints.
+            # No need to check for first_idx > 0: this is always true
+            assert first_idx > 0
+            self._c_lower[job1, first_idx - 1].lhs += \
+                self._slack_lowerbound[job1, first_idx - 1]
+            self._c_upper[job1, first_idx - 1].lhs -= \
+                self._slack_upperbound[job1, first_idx - 1]
+        elif type1 == 0:
+            # In addition, the time variables need to be updated in two
+            # more constraints.
+            if first_idx + 2 < len(self._event_list):
+                self._c_lower[job1, first_idx + 1].lhs += \
+                    self._slack_lowerbound[job1, first_idx + 1]
+                self._c_upper[job1, first_idx + 1].lhs -= \
+                    self._slack_upperbound[job1, first_idx + 1]
+        else:
+            raise ValueError(f"Type code not recognized: {type1}")
+
+        if type2 == 0:
+            # Earlier start, so bounds need to be enforced for an
+            # additional interval
+            if not isinstance(self._slack_lowerbound[job2, first_idx],
+                              docplex.mp.dvar.Var):
+                self._slack_lowerbound[job2, first_idx] = \
+                    self._problem.continuous_var(
+                        name=f"s-_{job2},{first_idx}",
+                        lb=0
+                    )
+                self._slack_upperbound[job2, first_idx] = \
+                    self._problem.continuous_var(
+                        name=f"s+_{job2},{first_idx}",
+                        lb=0
+                    )
+                self._cost += self._penalty_bounds * \
+                    (self._slack_lowerbound[job2, first_idx] +
+                     self._slack_upperbound[job2, first_idx])
+            # 5. Lower bound
+            self._c_lower[job2, first_idx].lhs += \
+                self._slack_lowerbound[job2, first_idx]
+            # 6. Upper bound
+            self._c_upper[job2, first_idx].lhs -= \
+                self._slack_upperbound[job2, first_idx]
+            # In addition, the time variables need to be updated in two
+            # more constraints.
+            # No need to check boundary: this always holds
+            assert first_idx + 2 < len(self._event_list)
+            self._c_lower[job2, first_idx + 1].lhs += \
+                self._slack_lowerbound[job2, first_idx + 1]
+            self._c_upper[job2, first_idx + 1].lhs -= \
+                self._slack_upperbound[job2, first_idx + 1]
+        elif type2 == 1:
+            # In addition, the time variables need to be updated in two
+            # more constraints.
+            # No need to check for first_idx > 0: this is always true
+            assert first_idx > 0
+            self._c_lower[job2, first_idx - 1].lhs += \
+                self._slack_lowerbound[job2, first_idx - 1]
+            self._c_upper[job2, first_idx - 1].lhs -= \
+                self._slack_lowerbound[job2, first_idx - 1]
+        else:
+            raise ValueError(f"Type code not recognized: {type2}")
