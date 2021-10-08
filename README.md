@@ -93,6 +93,7 @@ You can use the package by importing any of the functions or classes from the co
 
 Example uses and related scripts are located in the [`continuousresource/scripts` folder](continuousresource/scripts):
 - [`instancegeneration.py`](continuousresource/scripts/instancegeneration.py): generates a single problem instance
+- [`jobarrayinstancegeneration.py`](continuousresource/scripts/instancegeneration.py): generates a single problem instance
 - [`lp_stresstest.py`](continuousresource/scripts/lp_stresstest.py): creates and solves an LP based on a number of randomly generated instances
 - [`multipleinstancegeneration.py`](continuousresource/scripts/multipleinstancegeneration.py): like `instancegeneration.py`, but generating instances in bulk for a large number of parameter combinations
 - [`runtests.py`](continuousresource/scripts/runtests.py): solves the same problem instance with a number of different techniques and compares the results.

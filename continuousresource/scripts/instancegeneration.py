@@ -2,7 +2,8 @@ import click
 import datetime
 import os.path
 
-from continuousresource.instance import to_binary, to_csv, generate_instance
+from continuousresource.probleminstances.legacyinstance \
+    import LegacyInstance
 
 
 @click.command(context_settings=dict(help_option_names=['-h', '--help']))
@@ -117,17 +118,17 @@ def main(njobs, avg_resource, std_resource, jumppoints, release_times,
     of resource.
     """
     (resource_requirement, jump_points, weights, bounds,
-     resource_availability) = generate_instance(njobs, avg_resource,
-                                                std_resource, jumppoints,
-                                                release_times)
+     resource_availability) = LegacyInstance.generate_instance(
+        njobs, avg_resource, std_resource, jumppoints, release_times
+    )
 
     if exportformat in ['both', 'binary']:
         path = os.path.join(exportpath, label)
-        to_binary(path, resource_requirement, jump_points, weights, bounds,
+        LegacyInstance.to_binary(path, resource_requirement, jump_points, weights, bounds,
                   resource_availability)
     if exportformat in ['both', 'csv']:
         path = os.path.join(exportpath, label)
-        to_csv(path, resource_requirement, jump_points, weights, bounds,
+        LegacyInstance.to_csv(path, resource_requirement, jump_points, weights, bounds,
                resource_availability)
 
 

@@ -6,7 +6,9 @@ import os.path
 import pulp
 import shutil
 
-from continuousresource.instance import from_binary, from_csv
+
+from continuousresource.probleminstances.legacyinstance \
+    import LegacyInstance
 from continuousresource.mathematicalprogramming.mipmodels \
     import TimeIndexedNoDeadline
 
@@ -96,9 +98,9 @@ def main(format, path, model, solver, output_dir, label):
     """
     # Read instance
     if format == 'binary':
-        instance = from_binary(path)
+        instance = LegacyInstance.from_binary(path)
     elif format == 'csv':
-        instance = from_csv(path)
+        instance = LegacyInstance.from_csv(path)
     else:
         raise ValueError("Unsupported input format, must be binary or csv.")
 

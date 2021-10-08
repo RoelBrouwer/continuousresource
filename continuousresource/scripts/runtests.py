@@ -7,7 +7,8 @@ import re
 import shutil
 import time
 
-from continuousresource.instance import from_binary, from_csv
+from continuousresource.probleminstances.legacyinstance \
+    import LegacyInstance
 from continuousresource.mathematicalprogramming.mipmodels \
     import TimeIndexedNoDeadline
 
@@ -81,11 +82,15 @@ def main(format, path, solver, output_dir, label, skip_approaches):
         for inst in os.listdir(path):
             if format == 'binary':
                 if inst.endswith(".npz"):
-                    instance = from_binary(os.path.join(path, inst))
+                    instance = LegacyInstance.from_binary(
+                        os.path.join(path, inst)
+                    )
                     instance_name = inst[:-4]
             elif format == 'csv':
                 if os.path.isdir(inst):
-                    instance = from_csv(os.path.join(path, inst))
+                    instance = LegacyInstance.from_csv(
+                        os.path.join(path, inst)
+                    )
                     instance_name = inst
             else:
                 raise ValueError("Unsupported input format, must be binary or"
@@ -106,7 +111,7 @@ def main(format, path, solver, output_dir, label, skip_approaches):
                 mip.solve(solver)
                 t_end_ti_mip = time.perf_counter()
                 ti_mip_c = pulp.value(mip.problem.objective)
-                if ti_mip_c == None:
+                if ti_mip_c is None:
                     ti_mip_c = -1.0
 
                 # TI based relaxed MIP
@@ -117,7 +122,7 @@ def main(format, path, solver, output_dir, label, skip_approaches):
                 mip.solve(solver)
                 t_end_ti_mip_relax = time.perf_counter()
                 ti_mip_r_c = pulp.value(mip.problem.objective)
-                if ti_mip_r_c == None:
+                if ti_mip_r_c is None:
                     ti_mip_r_c = -1.0
             else:
                 # Skip TI, as it is really slow

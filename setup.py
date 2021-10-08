@@ -13,6 +13,8 @@ setup(
         'console_scripts': [
             'instancegeneration = continuousresource.scripts.'
                 'instancegeneration:main',
+            'jobarrayinstancegeneration = continuousresource.scripts.'
+                'jobarrayinstancegeneration:main',
             'lp_stresstest = continuousresource.scripts.lp_stresstest:main',
             'multipleinstancegeneration = continuousresource.scripts.'
                 'multipleinstancegeneration:main',

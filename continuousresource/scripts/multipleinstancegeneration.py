@@ -2,7 +2,9 @@ import click
 import datetime
 import os.path
 
-from continuousresource.instance import to_binary, to_csv, generate_instance
+
+from continuousresource.probleminstances.legacyinstance \
+    import LegacyInstance
 
 
 @click.command(context_settings=dict(help_option_names=['-h', '--help']))
@@ -45,19 +47,24 @@ def main(exportpath, exportformat, label):
                 for s in [0.05 * m, 0.1 * m, 0.2 * m]:
                     for r in [True]:  # , False]:
                         (resource_requirement, jump_points, weights, bounds,
-                         resource_availability) = generate_instance(n, m, s,
-                                                                    k, r)
+                         resource_availability) = \
+                            LegacyInstance.generate_instance(n, m, s, k, r)
 
                         inst_label = f"n{n}k{k}m{m:.2f}" + \
                                      f"s{(s / m):.2f}r{'1' if r else '0'}"
                         if exportformat in ['both', 'binary']:
                             path = os.path.join(exportpath, inst_label)
-                            to_binary(path, resource_requirement, jump_points,
-                                      weights, bounds, resource_availability)
+                            LegacyInstance.to_binary(path,
+                                                     resource_requirement,
+                                                     jump_points, weights,
+                                                     bounds,
+                                                     resource_availability)
                         if exportformat in ['both', 'csv']:
                             path = os.path.join(exportpath, inst_label)
-                            to_csv(path, resource_requirement, jump_points,
-                                   weights, bounds, resource_availability)
+                            LegacyInstance.to_csv(path, resource_requirement,
+                                                  jump_points, weights,
+                                                  bounds,
+                                                  resource_availability)
 
 
 if __name__ == "__main__":
