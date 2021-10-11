@@ -1,6 +1,9 @@
 # Generated files
 data/
 results/
+*.sol
+*.lp
+*.csv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
