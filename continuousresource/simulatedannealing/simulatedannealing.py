@@ -83,7 +83,6 @@ class SearchSpace():
         initial.model.generate_initial_solution()
         initial.model.initialize_problem()
         initial.eventorder = initial.model.event_list
-        print(initial.model.event_list)
         # print(initial.model.problem.lp_string)
         self._current_solution = initial
         self._best_solution = copy.copy(initial)
