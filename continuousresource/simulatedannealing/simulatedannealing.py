@@ -8,9 +8,6 @@ import copy
 import math
 import numpy as np
 
-from continuousresource.mathematicalprogramming.linprog \
-    import OrderBasedSubProblem
-
 
 def simulated_annealing(search_space, initial_temperature, alfa, alfa_period):
     """
@@ -58,7 +55,8 @@ class SearchSpace():
     def current(self):
         return self._current_solution
 
-    def generate_initial_solution(self, model_class, eventlist, *args, **kwargs):
+    def generate_initial_solution(self, model_class, eventlist,
+                                  *args, **kwargs):
         """Generates an initial solution within the search space and sets
         the value of self._current_solution accordingly.
 
@@ -76,12 +74,16 @@ class SearchSpace():
             by the constructor of `model_class`, other than `eventlist`.
         **kwargs :
             Should contain exactly the keyword arguments required by the
-            constructor of `model_class`, other than `eventlist`. 
+            constructor of `model_class`, other than `eventlist`.
         """
         # For now the initial solution is just the eventlist exactly as
         # presented.
         initial = SearchSpaceState(self, eventlist)
         initial.create_model(model_class, eventlist, *args, **kwargs)
+        initial.model.generate_initial_solution()
+        initial.model.initialize_problem()
+        initial.eventorder = initial.model.event_list
+        print(initial.model.event_list)
         # print(initial.model.problem.lp_string)
         self._current_solution = initial
         self._best_solution = copy.copy(initial)
@@ -92,7 +94,7 @@ class SearchSpace():
         sched = self._current_solution.model.get_schedule()
         pairs = np.array([
             i for i in (range(len(sched - 1)))
-            if np.isclose(sched[i], sched[i+1])
+            if np.isclose(sched[i], sched[i + 1])
         ])
 
         if len(pairs) < 1:

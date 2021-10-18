@@ -1,5 +1,6 @@
 from abc import ABC
 from abc import abstractmethod
+import bisect
 import docplex.mp.model
 import numpy as np
 
@@ -89,7 +90,6 @@ class OrderBasedSubProblem(LP):
                                                         jobs.shape[0])
         self._job_properties = jobs
         self._capacity = resource
-        self.initialize_problem()
 
     @property
     def event_list(self):
@@ -135,6 +135,113 @@ class OrderBasedSubProblem(LP):
         for i in range(len(eventlist)):
             event_map[eventlist[i][1], eventlist[i][0]] = i
         return event_map
+
+    def generate_initial_solution(self):
+        """...
+        """
+        # Initialize eventlist
+        eventlist = []
+
+        # Construct intervals
+        # `boundaries` is a list of time points at which the list of jobs
+        # available for processing changes. These are defined by triples
+        # (t, e, j), where t is the time, e the event type (0: release
+        # time passed, i.e. a job is added; 1: deadline passed) and j the
+        # job ID.
+        boundaries = np.concatenate((
+            np.array([
+                [self._job_properties[j, 3], 0, j]
+                for j in range(len(self._job_properties))
+            ]),
+            np.array([
+                [self._job_properties[j, 4], 1, j]
+                for j in range(len(self._job_properties))
+            ])
+        ))
+        boundaries = boundaries[boundaries[:, 0].argsort()]
+
+        # Create the reference table we will be working with.
+        # This will be a sorted list (sorted on deadline) of jobs that
+        # are currently available for processing. For every job it will
+        # contain the following information, in order:
+        # - 0: deadline;
+        # - 1: upper bound (P^+_j);
+        # - 2: residual resource need (E_j);
+        # - 3: total resource need (E_j);
+        # - 4: job ID;
+        curr_jobs = []
+
+        # Loop over intervals
+        for i in range(len(boundaries) - 1):
+            if boundaries[i, 1] == 0:
+                # We passed a release time, so we add a job to our list
+                bisect.insort(curr_jobs, [
+                    self._job_properties[int(boundaries[i, 2]), 4],  # d_j
+                    self._job_properties[int(boundaries[i, 2]), 2],  # P^+_j
+                    self._job_properties[int(boundaries[i, 2]), 0],  # E_j
+                    self._job_properties[int(boundaries[i, 2]), 0],  # E_j
+                    boundaries[i, 2]                                 # ID
+                ])
+
+            # Compute time and resource in this interval
+            interval_time = boundaries[i + 1, 0] - boundaries[i, 0]
+            avail_resource = interval_time * self._capacity
+
+            # Compute lower and upper bounds
+            lower_bounds = np.array([
+                max(
+                    0,
+                    job[2] - (job[0] - boundaries[i + 1, 0]) * job[1]
+                )
+                for job in curr_jobs
+            ])
+            upper_bounds = np.array([
+                min(
+                    job[2],
+                    # self._capacity * interval_time,
+                    job[1] * interval_time
+                )
+                for job in curr_jobs
+            ])
+
+            # First assign all lower bounds
+            avail_resource -= np.sum(lower_bounds)
+            remove = []
+            for j in range(len(curr_jobs)):
+                if lower_bounds[j] > 0:
+                    if curr_jobs[j][2] == curr_jobs[j][3]:
+                        eventlist.append([0, curr_jobs[j][4]])
+                    curr_jobs[j][2] -= lower_bounds[j]
+                    if curr_jobs[j][2] <= 0:
+                        eventlist.append([1, curr_jobs[j][4]])
+                        remove.append(j)
+
+            # Now distribute any resources that remain
+            if avail_resource > 0:
+                upper_bounds -= lower_bounds
+                for j in range(len(curr_jobs)):
+                    if curr_jobs[j][2] <= 0:
+                        continue
+                    amount = min(avail_resource, upper_bounds[j])
+                    if amount > 0:
+                        if curr_jobs[j][2] == curr_jobs[j][3]:
+                            eventlist.append([0, curr_jobs[j][4]])
+                        curr_jobs[j][2] -= amount
+                        if curr_jobs[j][2] <= 0:
+                            eventlist.append([1, curr_jobs[j][4]])
+                            remove.append(j)
+                        avail_resource -= amount
+                        if avail_resource <= 0:
+                            break
+
+            for j in range(len(remove) - 1, -1, -1):
+                del curr_jobs[remove[j]]
+
+        eventlist = np.array(eventlist, dtype=int)
+        self._event_list = eventlist
+        self._event_map = \
+            self._construct_event_mapping(eventlist,
+                                          len(self._job_properties))
 
     def initialize_problem(self):
         """...
