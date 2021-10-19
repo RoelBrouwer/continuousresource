@@ -33,12 +33,15 @@ def simulated_annealing(search_space, initial_temperature, alfa, alfa_period,
 
     Returns
     -------
+    int
+        Number of iterations performed
     SearchSpaceState
         Best found solution.
     """
     # Temperature
     temperature = initial_temperature
     stop_crit = 0
+    iters = cutoff
 
     # Main loop
     for i in range(cutoff):
@@ -53,6 +56,7 @@ def simulated_annealing(search_space, initial_temperature, alfa, alfa_period,
             # options, or have accepted less than two percent of
             # candidate solutions for over 10% of an alfa-period, we
             # stop.
+            iters = i + 1
             break
 
         # Update temperature for next iteration block
@@ -63,7 +67,7 @@ def simulated_annealing(search_space, initial_temperature, alfa, alfa_period,
             stop_crit = 0
 
     # Return solution
-    return search_space.best
+    return iters, search_space.best
 
 
 def simulated_annealing_verbose(search_space, initial_temperature, alfa,
@@ -91,9 +95,13 @@ def simulated_annealing_verbose(search_space, initial_temperature, alfa,
     cutoff : int
         Maximum number of iterations to run the simulated annealing
         process.
+    output_dir : string
+        Directory to put the verbose progression report.
 
     Returns
     -------
+    int
+        Number of iterations performed
     SearchSpaceState
         Best found solution.
     """
@@ -109,6 +117,7 @@ def simulated_annealing_verbose(search_space, initial_temperature, alfa,
         # Temperature
         temperature = initial_temperature
         stop_crit = 0
+        iters = cutoff
         start_time = time.perf_counter()
 
         # Main loop
@@ -124,6 +133,7 @@ def simulated_annealing_verbose(search_space, initial_temperature, alfa,
                 # options, or have accepted less than two percent of
                 # candidate solutions for over 10% of an alfa-period, we
                 # stop.
+                iters = i + 1
                 break
 
             # Update temperature for next iteration block
@@ -140,7 +150,7 @@ def simulated_annealing_verbose(search_space, initial_temperature, alfa,
             )
 
     # Return solution
-    return search_space.best
+    return iters, search_space.best
 
 
 class SearchSpace():
@@ -182,17 +192,25 @@ class SearchSpace():
         **kwargs :
             Should contain exactly the keyword arguments required by the
             constructor of `model_class`, other than `eventlist`.
+
+        Returns
+        -------
+        float
+            Timing (in seconds) of the actual initial solution generation,
         """
         # For now the initial solution is just the eventlist exactly as
         # presented.
         initial = SearchSpaceState(self, eventlist)
         initial.create_model(model_class, eventlist, *args, **kwargs)
+        t_start = time.perf_counter()
         initial.model.generate_initial_solution()
+        t_end = time.perf_counter()
         initial.model.initialize_problem()
         initial.eventorder = initial.model.event_list
         # print(initial.model.problem.lp_string)
         self._current_solution = initial
         self._best_solution = copy.copy(initial)
+        return t_end - t_start
 
     def get_neighbor_simultaneous(self):
         # Find candidates by looking at the adjacent pairs that were
