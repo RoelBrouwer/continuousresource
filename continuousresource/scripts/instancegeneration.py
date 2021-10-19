@@ -117,19 +117,16 @@ def main(njobs, avg_resource, std_resource, jumppoints, release_times,
     inverted and instead of processing time, jobs require a total amount
     of resource.
     """
-    (resource_requirement, jump_points, weights, bounds,
-     resource_availability) = LegacyInstance.generate_instance(
+    instance = LegacyInstance.generate_instance(
         njobs, avg_resource, std_resource, jumppoints, release_times
     )
 
     if exportformat in ['both', 'binary']:
         path = os.path.join(exportpath, label)
-        LegacyInstance.to_binary(path, resource_requirement, jump_points, weights, bounds,
-                  resource_availability)
+        LegacyInstance.to_binary(path, instance)
     if exportformat in ['both', 'csv']:
         path = os.path.join(exportpath, label)
-        LegacyInstance.to_csv(path, resource_requirement, jump_points, weights, bounds,
-               resource_availability)
+        LegacyInstance.to_csv(path, instance)
 
 
 if __name__ == "__main__":

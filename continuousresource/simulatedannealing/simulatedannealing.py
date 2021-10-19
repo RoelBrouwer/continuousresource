@@ -1,6 +1,8 @@
 import copy
 import math
 import numpy as np
+import os
+import time
 
 
 def simulated_annealing(search_space, initial_temperature, alfa, alfa_period,
@@ -59,6 +61,83 @@ def simulated_annealing(search_space, initial_temperature, alfa, alfa_period,
 
             # Reset stop criterium
             stop_crit = 0
+
+    # Return solution
+    return search_space.best
+
+
+def simulated_annealing_verbose(search_space, initial_temperature, alfa,
+                                alfa_period, cutoff=100000, output_dir=None):
+    """Routine performing Simulated Annealing local search.
+    The search stops when one of the following three conditions is met:
+        - No candidate solution was accepted after trying 200 options in
+          a single iteration, or;
+        - The percentage of accepted solutions was under 2% for over 10%
+          of the iterations of a single alfa-period, or;
+        - The total number of iterations exceeds the `cutoff` parameter.
+
+    Parameters
+    ----------
+    search_space : SearchSpace
+        Search space object that this simulated annealing run will be
+        performed on.
+    initial_temperature : float
+        Initial value for the temperature of the annealing process.
+    alfa : float
+        Multiplication factor for updating the temperature.
+    alfa_period : int
+        Number of iterations to go through before updating the
+        temperature.
+    cutoff : int
+        Maximum number of iterations to run the simulated annealing
+        process.
+
+    Returns
+    -------
+    SearchSpaceState
+        Best found solution.
+    """
+    if output_dir is None:
+        output_dir = os.getcwd()
+
+    with open(os.path.join(output_dir,
+                           f"iterations.csv"), "w") as csv:
+        csv.write(
+            '#;time;best_score;curr_score;rejected\n'
+        )
+
+        # Temperature
+        temperature = initial_temperature
+        stop_crit = 0
+        start_time = time.perf_counter()
+
+        # Main loop
+        for i in range(cutoff):
+            # Select a random neighbor
+            fails, new_state = search_space.get_neighbor(temperature)
+
+            if (1 / (fails + 1)) <= 0.02:
+                stop_crit += 1
+
+            if new_state is None or stop_crit > math.ceil(alfa_period / 10):
+                # If we were unable to accept a candidate solution from 200
+                # options, or have accepted less than two percent of
+                # candidate solutions for over 10% of an alfa-period, we
+                # stop.
+                break
+
+            # Update temperature for next iteration block
+            if i % alfa_period:
+                temperature = temperature * alfa
+
+                # Reset stop criterium
+                stop_crit = 0
+
+            csv.write(
+                f'{i};{time.perf_counter() - start_time:0.2f};'
+                f'{search_space.best.score};{search_space.current.score};'
+                f'{fails}\n'
+            )
 
     # Return solution
     return search_space.best

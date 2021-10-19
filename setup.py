@@ -18,9 +18,12 @@ setup(
             'lp_stresstest = continuousresource.scripts.lp_stresstest:main',
             'multipleinstancegeneration = continuousresource.scripts.'
                 'multipleinstancegeneration:main',
+            'multiplejobarrayinstancegeneration = continuousresource.scripts.'
+                'multiplejobarrayinstancegeneration:main',
             'runtests = continuousresource.scripts.runtests:main',
             'solveinstance = continuousresource.scripts.solveinstance:main',
-            'test_simulated_annealing = continuousresource.scripts.test_simulated_annealing:main'
+            'test_simulated_annealing = continuousresource.scripts.'
+                'test_simulated_annealing:main'
         ]
     }
 )

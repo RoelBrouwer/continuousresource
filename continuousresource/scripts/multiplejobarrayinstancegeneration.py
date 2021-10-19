@@ -42,21 +42,16 @@ from continuousresource.probleminstances.legacyinstance \
 def main(exportpath, exportformat, label):
     # TODO: think of useful parameters
     for n in [10, 20, 50, 100]:  # [10, 20, 50, 100, 200]:
-        for k in [2, 3, 4, 9]:
-            for m in [25.0, 50.0, 100.0, 200.0]:
-                for s in [0.05 * m, 0.1 * m, 0.2 * m]:
-                    for r in [True]:  # , False]:
-                        instance = \
-                            LegacyInstance.generate_instance(n, m, s, k, r)
+        for r in [25.0, 50.0, 100.0, 200.0]:
+            instance = JobPropertiesInstance.generate_instance(n, r)
 
-                        inst_label = f"n{n}k{k}m{m:.2f}" + \
-                                     f"s{(s / m):.2f}r{'1' if r else '0'}"
-                        if exportformat in ['both', 'binary']:
-                            path = os.path.join(exportpath, inst_label)
-                            LegacyInstance.to_binary(path, instance)
-                        if exportformat in ['both', 'csv']:
-                            path = os.path.join(exportpath, inst_label)
-                            LegacyInstance.to_csv(path, instance)
+            inst_label = f"{label}_n{n}r{r:.2f}"
+            if exportformat in ['both', 'binary']:
+                path = os.path.join(exportpath, inst_label)
+                JobPropertiesInstance.to_binary(path, instance)
+            if exportformat in ['both', 'csv']:
+                path = os.path.join(exportpath, inst_label)
+                JobPropertiesInstance.to_csv(path, instance)
 
 
 if __name__ == "__main__":
