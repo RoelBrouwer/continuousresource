@@ -3,8 +3,8 @@ import datetime
 import os.path
 
 
-from continuousresource.probleminstances.legacyinstance \
-    import LegacyInstance
+from continuousresource.probleminstances.jobarrayinstance \
+    import JobPropertiesInstance
 
 
 @click.command(context_settings=dict(help_option_names=['-h', '--help']))
@@ -41,7 +41,7 @@ from continuousresource.probleminstances.legacyinstance \
 )
 def main(exportpath, exportformat, label):
     # TODO: think of useful parameters
-    for n in [10, 20, 50, 100]:  # [10, 20, 50, 100, 200]:
+    for n in [5, 10, 20, 50, 100, 200]:  # [10, 20, 50, 100, 200]:
         for r in [25.0, 50.0, 100.0, 200.0]:
             instance = JobPropertiesInstance.generate_instance(n, r)
 

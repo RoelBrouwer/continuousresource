@@ -1,3 +1,4 @@
+import csv
 import datetime
 import math
 import numpy as np
@@ -42,7 +43,7 @@ class JobPropertiesInstance(BaseInstance):
 
     @staticmethod
     def from_csv(path):
-        """Read a problem instance from three csv files.
+        """Read a problem instance from two csv files.
 
         Parameters
         ----------
@@ -56,17 +57,16 @@ class JobPropertiesInstance(BaseInstance):
             Dictionary containing the instance data, in the format
             expected for a particular instance type.
         """
+        with open(os.path.join(path, 'constants.csv'), "r") as cst:
+            rdr = csv.reader(cst)
+            constants = {row[0]: float(row[1]) for row in rdr}
         instance = {
             'jobs': np.genfromtxt(
                 os.path.join(path, 'jobs.csv'),
                 delimiter=';',
                 dtype=np.float64
             ),
-            'constants': np.genfromtxt(
-                os.path.join(path, 'constants.csv'),
-                delimiter=';',
-                dtype=np.float64
-            )
+            'constants': constants
         }
         # JobPropertiesInstance.check_input_dimensions(instance)
         return instance
@@ -123,12 +123,9 @@ class JobPropertiesInstance(BaseInstance):
             delimiter=';',
             fmt='%1.2f'
         )
-        np.savetxt(
-            os.path.join(path, 'constants.csv'),
-            instance['constants'],
-            delimiter=';',
-            fmt='%1.2f'
-        )
+        with open(os.path.join(path, 'constants.csv'), "w") as csv:
+            for key in instance['constants'].keys():
+                csv.write(f"{key};{instance['constants'][key]}\n")
 
     @staticmethod
     def generate_instance(njobs, resource_availability):
