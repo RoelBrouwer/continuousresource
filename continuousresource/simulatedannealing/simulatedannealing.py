@@ -1,36 +1,64 @@
-# params
-# T = controlparameter
-# T_init -> accept 50% verslechteringen
-# alfa (T_new = T * alfa)
-# same T for #iterations: constant (16) * size(neighborhood)
-# ends when accepted verslechteringen < 2%
 import copy
 import math
 import numpy as np
 
 
-def simulated_annealing(search_space, initial_temperature, alfa, alfa_period):
-    """
-    """
-    # Initial solution
-    # search_space.generate_initial_solution()
+def simulated_annealing(search_space, initial_temperature, alfa, alfa_period,
+                        cutoff=100000):
+    """Routine performing Simulated Annealing local search.
+    The search stops when one of the following three conditions is met:
+        - No candidate solution was accepted after trying 200 options in
+          a single iteration, or;
+        - The percentage of accepted solutions was under 2% for over 10%
+          of the iterations of a single alfa-period, or;
+        - The total number of iterations exceeds the `cutoff` parameter.
 
+    Parameters
+    ----------
+    search_space : SearchSpace
+        Search space object that this simulated annealing run will be
+        performed on.
+    initial_temperature : float
+        Initial value for the temperature of the annealing process.
+    alfa : float
+        Multiplication factor for updating the temperature.
+    alfa_period : int
+        Number of iterations to go through before updating the
+        temperature.
+    cutoff : int
+        Maximum number of iterations to run the simulated annealing
+        process.
+
+    Returns
+    -------
+    SearchSpaceState
+        Best found solution.
+    """
     # Temperature
     temperature = initial_temperature
+    stop_crit = 0
 
     # Main loop
-    # TODO: propper stopping condition
-    # while True:
-    for i in range(100):
+    for i in range(cutoff):
         # Select a random neighbor
-        new_state = search_space.get_neighbor(temperature)
-        if new_state is None:
+        fails, new_state = search_space.get_neighbor(temperature)
+
+        if (1 / (fails + 1)) <= 0.02:
+            stop_crit += 1
+
+        if new_state is None or stop_crit > math.ceil(alfa_period / 10):
+            # If we were unable to accept a candidate solution from 200
+            # options, or have accepted less than two percent of
+            # candidate solutions for over 10% of an alfa-period, we
+            # stop.
             break
-        # print(new_state.eventorder)
 
         # Update temperature for next iteration block
         if i % alfa_period:
             temperature = temperature * alfa
+
+            # Reset stop criterium
+            stop_crit = 0
 
     # Return solution
     return search_space.best
@@ -114,6 +142,22 @@ class SearchSpace():
                 return new_state
 
     def get_neighbor(self, temperature):
+        """Finds candidate solutions by swapping adjacent event pairs.
+
+        Parameters
+        ----------
+        temperature : float
+            Current annealing temperature, used in determining if a
+            candidate with a lower objective should be accepted.
+
+        Returns
+        -------
+        int
+            Number of candidate solutions that were considered, but
+            rejected.
+        SearchSpaceState
+            New state for the search to continue with
+        """
         # Find candidates by looking at all adjacent pairs
         accepted = False
         fail_count = 0
@@ -152,11 +196,11 @@ class SearchSpace():
                 # for both the current and candidate solutions).
                 new_state.model.update_swap_neighbors(swap_id)
 
-                if fail_count > 100:
+                if fail_count > 200:
                     return None
                 fail_count += 1
 
-        return new_state
+        return fail_count, new_state
 
 
 class SearchSpaceState():
