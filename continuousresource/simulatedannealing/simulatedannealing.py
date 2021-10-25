@@ -134,6 +134,12 @@ def simulated_annealing_verbose(search_space, initial_temperature, alfa,
                 # candidate solutions for over 10% of an alfa-period, we
                 # stop.
                 iters = i + 1
+
+                csv.write(
+                    f'{i};{time.perf_counter() - start_time:0.2f};'
+                    f'{search_space.best.score};{search_space.current.score};'
+                    f'{fails}\n'
+                )
                 break
 
             # Update temperature for next iteration block
@@ -294,7 +300,7 @@ class SearchSpace():
                 new_state.model.update_swap_neighbors(swap_id)
 
                 if fail_count > 200:
-                    return None
+                    return fail_count, None
                 fail_count += 1
 
         return fail_count, new_state
