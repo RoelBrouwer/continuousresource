@@ -21,6 +21,7 @@ setup(
             'multiplejobarrayinstancegeneration = continuousresource.scripts.'
                 'multiplejobarrayinstancegeneration:main',
             'runtests = continuousresource.scripts.runtests:main',
+            'runtests_sa = continuousresource.scripts.runtests_sa:main',
             'solveinstance = continuousresource.scripts.solveinstance:main',
             'test_simulated_annealing = continuousresource.scripts.'
                 'test_simulated_annealing:main'
