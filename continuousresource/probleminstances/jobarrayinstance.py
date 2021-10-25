@@ -36,7 +36,7 @@ class JobPropertiesInstance(BaseInstance):
         file_contents = np.load(path, allow_pickle=True)
         instance = {
             'jobs': file_contents['jobs'],
-            'constants': file_contents['constants']
+            'constants': file_contents['constants'].item()
         }
         # JobPropertiesInstance.check_input_dimensions(instance)
         return instance
