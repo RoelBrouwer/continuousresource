@@ -73,12 +73,15 @@ def main(file, output_dir, prefix):
     kpl.set_title(f'Convergence of the objective value')
     kpl.plot(
         data['#'],
-        data['best_score']
+        data['best_score'],
+        label="Best"
     )
     kpl.plot(
         data['#'],
-        data['curr_score']
+        data['curr_score'],
+        label="Current"
     )
+    kpl.legend()
     plt.savefig(
         os.path.join(
             output_dir,
@@ -94,12 +97,15 @@ def main(file, output_dir, prefix):
     kpl.set_title(f'Convergence of the objective value')
     kpl.plot(
         data['time'],
-        data['best_score']
+        data['best_score'],
+        label="Best"
     )
     kpl.plot(
         data['time'],
-        data['curr_score']
+        data['curr_score'],
+        label="Current"
     )
+    kpl.legend()
     plt.savefig(
         os.path.join(
             output_dir,
