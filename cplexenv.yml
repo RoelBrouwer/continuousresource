@@ -3,7 +3,9 @@ channels:
   - conda-forge
 dependencies:
   - click
+  - matplotlib
   - numpy
+  - pandas
   - pulp
   - python=3.8
 
