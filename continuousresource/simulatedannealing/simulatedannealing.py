@@ -110,8 +110,12 @@ def simulated_annealing_verbose(search_space, initial_temperature, alfa,
 
     with open(os.path.join(output_dir,
                            f"iterations.csv"), "w") as csv:
+        added_header = ""
+        if search_space.current.model.with_slack:
+            added_header = ";slack"
+
         csv.write(
-            '#;time;best_score;curr_score;rejected\n'
+            f'#;time;best_score;curr_score;rejected{added_header}\n'
         )
 
         # Temperature
@@ -135,10 +139,17 @@ def simulated_annealing_verbose(search_space, initial_temperature, alfa,
                 # stop.
                 iters = i + 1
 
+                slack_string = ""
+                if search_space.current.model.with_slack:
+                    total_slack = 0
+                    for (label, value, weight) in search_space.current.slack:
+                        total_slack += value * weight
+                    slack_string = f";{total_slack}"
+
                 csv.write(
                     f'{i};{time.perf_counter() - start_time:0.2f};'
                     f'{search_space.best.score};{search_space.current.score};'
-                    f'{fails}\n'
+                    f'{fails}{slack_string}\n'
                 )
                 break
 
@@ -149,10 +160,17 @@ def simulated_annealing_verbose(search_space, initial_temperature, alfa,
                 # Reset stop criterium
                 stop_crit = 0
 
+            slack_string = ""
+            if search_space.current.model.with_slack:
+                total_slack = 0
+                for (label, value, weight) in search_space.current.slack:
+                    total_slack += value * weight
+                slack_string = f"{total_slack}"
+
             csv.write(
                 f'{i};{time.perf_counter() - start_time:0.2f};'
                 f'{search_space.best.score};{search_space.current.score};'
-                f'{fails}\n'
+                f'{fails}{slack_string}\n'
             )
 
     # Return solution
@@ -241,6 +259,7 @@ class SearchSpace():
                 if new_state.score < self._best_solution.score:
                     self._best_solution = copy.copy(new_state)
                     self._best_solution.score = new_state.score
+                    self._best_solution.slack = new_state.slack
                 # if new_state.score > -1:
                 return new_state
 
@@ -292,6 +311,7 @@ class SearchSpace():
                     # print(f"best score: {new_state.score}")
                     self._best_solution = copy.copy(new_state)
                     self._best_solution.score = new_state.score
+                    self._best_solution.slack = new_state.slack
                 self._current_solution = new_state
                 accepted = True
             else:
@@ -321,6 +341,7 @@ class SearchSpaceState():
         self._searchspace = belongs_to
         self._eventorder = eventorder
         self._score = 100000  # TODO: !!!!!
+        self._slack = []
         self._lp_model = None
         self._schedule = None
 
@@ -343,6 +364,16 @@ class SearchSpaceState():
         """Manually set the value of the score attribute for this state.
         Use with caution."""
         self._score = score
+
+    @property
+    def slack(self):
+        return self._slack
+
+    @slack.setter
+    def slack(self, slack):
+        """Manually set the value of the slack attribute for this state.
+        Use with caution."""
+        self._slack = slack
 
     @property
     def model(self):
@@ -395,5 +426,10 @@ class SearchSpaceState():
         if sol is not None:
             self._score = sol.get_objective_value()
             self._schedule = self._lp_model.get_schedule()
+            if self._lp_model.with_slack:
+                self._slack = self._lp_model.compute_slack()
+            else:
+                self._slack = []
         else:
             self._score = 100000  # TODO: !!!!!!!!!!!
+            self._slack = []

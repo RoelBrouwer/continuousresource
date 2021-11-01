@@ -20,6 +20,7 @@ class LP(ABC):
     """
     def __init__(self, label, solver='cplex'):
         self._solver = solver
+        self._with_slack = False
 
         if solver == 'cplex':
             self._problem = docplex.mp.model.Model(name=label)
@@ -35,6 +36,10 @@ class LP(ABC):
     def solver(self):
         return self._solver
 
+    @property
+    def with_slack(self):
+        return self._with_slack
+
     def solve(self):
         """Solve the LP."""
         # self._problem.export_as_lp(os.getcwd())
@@ -49,6 +54,22 @@ class LP(ABC):
     def print_solution(self):
         """Print a human readable version of the (current) solution."""
         pass
+
+    @abstractmethod
+    def compute_slack(self):
+        """Compute the (summed) value of the slack variables in the
+        model.
+
+        Returns
+        -------
+        list of tuple
+            List of tuples with in the first position a string
+            identifying the type of slack variable, in second position
+            the summed value of these variables (float) and in third
+            position the unit weight of these variables in the objective.
+        """
+        raise NotImplementedError("The model does not contain slack"
+                                  " variables")
 
 
 class OrderBasedSubProblem(LP):
@@ -619,6 +640,7 @@ class OrderBasedSubProblemWithSlack(OrderBasedSubProblem):
         self._penalty_bounds = slackpenalties[1]
 
         super().__init__(eventlist, jobs, resource, label, solver)
+        self._with_slack = True
 
     def initialize_problem(self):
         super().initialize_problem()
@@ -784,3 +806,35 @@ class OrderBasedSubProblemWithSlack(OrderBasedSubProblem):
                 self._slack_lowerbound[job2, first_idx - 1]
         else:
             raise ValueError(f"Type code not recognized: {type2}")
+
+    def compute_slack(self):
+        """Compute the (summed) value of the slack variables in the
+        model.
+
+        Returns
+        -------
+        list of tuple
+            List of tuples with in the first position a string
+            identifying the type of slack variable, in second position
+            the summed value of these variables (float) and in third
+            position the unit weight of these variables in the objective.
+        """
+        resource_slack = 0
+        upper_slack = 0
+        lower_slack = 0
+
+        for r_var in self._slack_resource:
+            if isinstance(r_var, docplex.mp.dvar.Var):
+                resource_slack += r_var.solution_value
+
+        for u_var in self._slack_upperbound:
+            if isinstance(u_var, docplex.mp.dvar.Var):
+                upper_slack += u_var.solution_value
+
+        for l_var in self._slack_lowerbound:
+            if isinstance(l_var, docplex.mp.dvar.Var):
+                lower_slack += l_var.solution_value
+
+        return [("resource", resource_slack, self._penalty_capacity),
+                ("upperbound", upper_slack, self._penalty_bounds), 
+                ("lowerbound", lower_slack, self._penalty_bounds)]

@@ -78,7 +78,7 @@ def main(format, path, solver, output_dir, label, verbose):
     with open(os.path.join(output_dir,
                            f"{label}_summary.csv"), "w") as csv:
         csv.write(
-            'n;r;T_init;alfa;alfa_period;stop;#iter;time;best;\n'
+            'n;r;T_init;alfa;alfa_period;stop;#iter;time;best;slack\n'
         )
         for inst in os.listdir(path):
             if format == 'binary':
@@ -162,11 +162,16 @@ Total time (s): {t_end - t_start}
                     """
                 )
 
+            total_slack = 0
+            if solution.model.with_slack and len(solution.slack) > 0:
+                for (slack_label, value, weight) in solution.slack:
+                    total_slack += value * weight
+
             # Build-up CSV-file
             csv.write(
                 f'{params.group(1)};{params.group(2)};{initial_temperature};'
                 f'{alfa};{alfa_period};{cutoff};{iters};{t_end - t_start};'
-                f'{solution.score}\n'
+                f'{solution.score};{total_slack}\n'
             )
 
             # Move all files with names starting with the label
