@@ -158,7 +158,7 @@ def simulated_annealing_verbose(search_space, initial_temperature, alfa,
                 # If we were unable to accept a candidate solution from 200
                 # options, we perform a random walk.
                 new_state = search_space.random_walk()
-                if new_state.score == 100000: # TODO: improve !!!
+                if new_state.score == np.inf:
                     # If we get a completely infeasible solution, we give
                     # up.
                     iters = i + 1
@@ -410,7 +410,7 @@ class SearchSpaceState():
         # access via self._lp_model.event_list
         self._searchspace = belongs_to
         self._eventorder = eventorder
-        self._score = 100000  # TODO: !!!!!
+        self._score = np.inf
         self._slack = []
         self._lp_model = None
         self._schedule = None
@@ -501,5 +501,5 @@ class SearchSpaceState():
             else:
                 self._slack = []
         else:
-            self._score = 100000  # TODO: !!!!!!!!!!!
+            self._score = np.inf
             self._slack = []
