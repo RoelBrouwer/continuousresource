@@ -63,7 +63,9 @@ def main(file, output_dir, prefix):
     data = pd.read_csv(
         file,
         sep=';',
-        usecols=(['#', 'time', 'best_score', 'curr_score', 'rejected'])
+        usecols=([
+            '#', 'time', 'best_score', 'curr_score', 'rejected', 'slack'
+        ])
     )
     
     fig = plt.figure()
@@ -80,6 +82,11 @@ def main(file, output_dir, prefix):
         data['#'],
         data['curr_score'],
         label="Current"
+    )
+    kpl.plot(
+        data['#'],
+        data['slack'],
+        label="Slack"
     )
     kpl.legend()
     plt.savefig(
@@ -104,6 +111,11 @@ def main(file, output_dir, prefix):
         data['time'],
         data['curr_score'],
         label="Current"
+    )
+    kpl.plot(
+        data['time'],
+        data['slack'],
+        label="Slack"
     )
     kpl.legend()
     plt.savefig(
