@@ -51,13 +51,16 @@ def simulated_annealing(search_space, initial_temperature, alfa, alfa_period,
         if (1 / (fails + 1)) <= 0.02:
             stop_crit += 1
 
-        if new_state is None or stop_crit > math.ceil(alfa_period / 10):
-            # If we were unable to accept a candidate solution from 200
-            # options, or have accepted less than two percent of
-            # candidate solutions for over 10% of an alfa-period, we
-            # stop.
+        if stop_crit > math.ceil(alfa_period / 10):
+            # If we have accepted less than two percent of candidate
+            # solutions for over 10% of an alfa-period, we stop.
             iters = i + 1
             break
+
+        if new_state is None:
+            # If we were unable to accept a candidate solution from 200
+            # options, we perform a random walk.
+            new_state = search_space.random_walk()
 
         # Update temperature for next iteration block
         if i % alfa_period:
@@ -132,11 +135,9 @@ def simulated_annealing_verbose(search_space, initial_temperature, alfa,
             if (1 / (fails + 1)) <= 0.02:
                 stop_crit += 1
 
-            if new_state is None or stop_crit > math.ceil(alfa_period / 10):
-                # If we were unable to accept a candidate solution from 200
-                # options, or have accepted less than two percent of
-                # candidate solutions for over 10% of an alfa-period, we
-                # stop.
+            if stop_crit > math.ceil(alfa_period / 10):
+                # If we have accepted less than two percent of candidate
+                # solutions for over 10% of an alfa-period, we stop.
                 iters = i + 1
 
                 slack_string = ""
@@ -153,6 +154,30 @@ def simulated_annealing_verbose(search_space, initial_temperature, alfa,
                 )
                 break
 
+            if new_state is None:
+                # If we were unable to accept a candidate solution from 200
+                # options, we perform a random walk.
+                new_state = search_space.random_walk()
+                if new_state.score == 100000: # TODO: improve !!!
+                    # If we get a completely infeasible solution, we give
+                    # up.
+                    iters = i + 1
+
+                    slack_string = ""
+                    if search_space.current.model.with_slack:
+                        total_slack = 0
+                        for (label, value, weight) in search_space.current.slack:
+                            total_slack += value * weight
+                        slack_string = f";{total_slack}"
+
+                    csv.write(
+                        f'{i};{time.perf_counter() - start_time:0.2f};'
+                        f'{search_space.best.score};{search_space.current.score};'
+                        f'{fails}{slack_string}\n'
+                    )
+                    break
+                    
+
             # Update temperature for next iteration block
             if i % alfa_period:
                 temperature = temperature * alfa
@@ -165,7 +190,7 @@ def simulated_annealing_verbose(search_space, initial_temperature, alfa,
                 total_slack = 0
                 for (label, value, weight) in search_space.current.slack:
                     total_slack += value * weight
-                slack_string = f"{total_slack}"
+                slack_string = f";{total_slack}"
 
             csv.write(
                 f'{i};{time.perf_counter() - start_time:0.2f};'
@@ -324,6 +349,51 @@ class SearchSpace():
                 fail_count += 1
 
         return fail_count, new_state
+
+    def random_walk(self, no_swaps=100):
+        """Performs a random walk from the current solution by swapping
+        `no_swaps` random pairs of adjacent events. These swaps are not
+        executed simultaneously, but one after another. So, the second
+        swap is performed on the event order that results after the first
+        swap, and so on.
+
+        Parameters
+        ----------
+        no_swaps : int
+            Length of the random walk, i.e. the number of swaps
+            performed.
+
+        Returns
+        -------
+        SearchSpaceState
+            New state for the search to continue with
+        """
+        new_state = copy.copy(self._current_solution)
+        new_state.model = self._current_solution.model
+
+        for i in range(no_swaps):
+            swap_id = np.random.randint(
+                len(new_state.model.event_list) - 1
+            )
+            while (new_state.model.event_list[swap_id, 1] ==
+                   new_state.model.event_list[swap_id + 1, 1]):
+                swap_id = np.random.randint(
+                    len(new_state.model.event_list) - 1
+                )
+            new_state.model.update_swap_neighbors(swap_id)
+
+        new_state.eventorder = copy.copy(
+            new_state.model.event_list
+        )
+        new_state.compute_score()
+
+        if new_state.score < self._best_solution.score:
+            self._best_solution = copy.copy(new_state)
+            self._best_solution.score = new_state.score
+            self._best_solution.slack = new_state.slack
+        self._current_solution = new_state
+
+        return new_state
 
 
 class SearchSpaceState():
