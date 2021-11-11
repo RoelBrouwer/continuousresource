@@ -16,31 +16,16 @@ class MIP(ABC):
         is sufficiently unique, to avoid conflicts or other unexpected
         behavior.
     """
-    def __init__(self, instance, label):
-        # TODO: \/
-        # Extract some constants from the instance
-        self._totaltime = instance['resource_availability'].shape[0]
-        self._njobs = instance['jump_points'].shape[0]
-        self._kjumps = instance['jump_points'].shape[1] - 1
-
+    def __init__(self, label, minimize=True):
         # Initialize problem
-        self._problem = pulp.LpProblem(label, pulp.LpMaximize)
+        if minimize:
+            self._problem = pulp.LpProblem(label, pulp.LpMinimize)
+        else:
+            self._problem = pulp.LpProblem(label, pulp.LpMaximize)
 
     @property
     def problem(self):
         return self._problem
-
-    @property
-    def njobs(self):
-        return self._njobs
-
-    @property
-    def kjumps(self):
-        return self._kjumps
-
-    @property
-    def totaltime(self):
-        return self._totaltime
 
     def solve(self, solver):
         """Solve the LP.
@@ -115,7 +100,39 @@ class MIP(ABC):
         pass
 
 
-class TimeIndexedNoDeadline(MIP):
+class JumpPointMIP(MIP):
+    """Abstract class with some common jump point based model properties.
+
+    Parameters
+    ----------
+    instance : Dict of ndarray
+        Dictionary containing the instance data.
+    label : str
+        Label or name for the (solved) instance. Be sure to use one that
+        is sufficiently unique, to avoid conflicts or other unexpected
+        behavior.
+    """
+    def __init__(self, instance, label):
+        self._totaltime = instance['resource_availability'].shape[0]
+        self._njobs = instance['jump_points'].shape[0]
+        self._kjumps = instance['jump_points'].shape[1] - 1
+
+        super().__init__(label, minimize=False)
+
+    @property
+    def njobs(self):
+        return self._njobs
+
+    @property
+    def kjumps(self):
+        return self._kjumps
+
+    @property
+    def totaltime(self):
+        return self._totaltime
+
+
+class TimeIndexedNoDeadline(JumpPointMIP):
     """Class implementing a time-indexed Mixed Integer Linear Programming
     model.
 
