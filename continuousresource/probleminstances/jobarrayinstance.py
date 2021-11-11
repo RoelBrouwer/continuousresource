@@ -128,7 +128,7 @@ class JobPropertiesInstance(BaseInstance):
                 csv.write(f"{key};{instance['constants'][key]}\n")
 
     @staticmethod
-    def generate_instance(njobs, resource_availability):
+    def generate_instance(njobs, resource_availability, adversarial=False):
         """Generate a single instance of a specific type.
 
         Parameters
@@ -138,6 +138,9 @@ class JobPropertiesInstance(BaseInstance):
         resource_availability : float
             The continuously available amount of resource in the
             instance.
+        adversarial : boolean
+            Generate an adversarial instance, where jobs with a high
+            deadline also have a high weight.
 
         Returns
         -------
@@ -219,6 +222,12 @@ class JobPropertiesInstance(BaseInstance):
             )
             for j in range(njobs)
         ]).round(decimals=2)
+
+        if adversarial:
+            # Sort by deadline, and reorder the weights to be
+            # non-decreasing.
+            arr = jobs[jobs[:, 4].argsort()]
+            jobs[:, 5].sort()
 
         return {
             'jobs': jobs,
