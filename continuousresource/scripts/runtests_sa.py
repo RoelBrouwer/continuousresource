@@ -87,12 +87,16 @@ def main(format, path, solver, output_dir, label, verbose):
                         os.path.join(path, inst)
                     )
                     instance_name = inst[:-4]
+                else:
+                    continue
             elif format == 'csv':
-                if os.path.isdir(inst):
+                if os.path.isdir(os.path.join(path, inst)):
                     instance = JobPropertiesInstance.from_csv(
                         os.path.join(path, inst)
                     )
                     instance_name = inst
+                else:
+                    continue
             else:
                 raise ValueError("Unsupported input format, must be binary or"
                                  " csv.")
@@ -112,11 +116,11 @@ def main(format, path, solver, output_dir, label, verbose):
             model_class = OrderBasedSubProblemWithSlack
 
             # TO BE varied:
-            slackpenalties = [2, 2]
+            slackpenalties = [5, 5]
             initial_temperature = 100
             alfa = 0.95
-            alfa_period = 160
-            cutoff = 10000
+            alfa_period = 100
+            cutoff = 1000
 
             t_start = time.perf_counter()
             search_space = SearchSpace()

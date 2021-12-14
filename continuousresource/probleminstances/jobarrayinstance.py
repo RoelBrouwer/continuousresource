@@ -58,7 +58,7 @@ class JobPropertiesInstance(BaseInstance):
             expected for a particular instance type.
         """
         with open(os.path.join(path, 'constants.csv'), "r") as cst:
-            rdr = csv.reader(cst)
+            rdr = csv.reader(cst, delimiter=';')
             constants = {row[0]: float(row[1]) for row in rdr}
         instance = {
             'jobs': np.genfromtxt(
