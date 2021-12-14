@@ -27,7 +27,7 @@ class MIP(ABC):
     def problem(self):
         return self._problem
 
-    def solve(self, solver):
+    def solve(self, solver, timelimit=None):
         """Solve the LP.
 
         Parameters
@@ -35,6 +35,9 @@ class MIP(ABC):
         solver : {'glpk', 'gurobi', 'cplex'}
             The solver that will be used to solve the LP constructed from
             the provided instance.
+        timelimit : int
+            Optional value indicating the timelimit set on solving the
+            problem. By default, no timelimit is enforced.
 
         Notes
         -----
@@ -50,7 +53,7 @@ class MIP(ABC):
                 msg=True,
                 options=None,
                 path=None,
-                timeLimit=None
+                timeLimit=timelimit
             )
         elif solver == 'cplex':
             slv = pulp.CPLEX(
@@ -65,7 +68,7 @@ class MIP(ABC):
                 options=None,
                 path=None,
                 threads=None,
-                timeLimit=3600,
+                timeLimit=timelimit,
                 warmStart=False
             )
         elif solver == 'gurobi':
@@ -79,7 +82,7 @@ class MIP(ABC):
                 options=None,
                 path=None,
                 threads=None,
-                timeLimit=None,
+                timeLimit=timelimit,
                 warmStart=False
             )
         else:
@@ -281,6 +284,175 @@ class TimeIndexedNoDeadline(JumpPointMIP):
                                   <= 0), f"Lower_bound_{j}_at_{t}"
                 self._problem += (instance['bounds'][j, 1] * x[j, t] - p[j, t]
                                   >= 0), f"Upper_bound_{j}_at_{t}"
+
+    def print_solution(self):
+        """Print a human readable version of the (current) solution.
+
+        Notes
+        -----
+        The current implementation is very minimal, only returning the
+        objective value.
+        """
+        print("Total profit = ", pulp.value(self._problem.objective))
+
+
+class ContinuousResourceMIP(MIP):
+    """Class implementing a Mixed Integer Linear Programming model for a
+    resource scheduling problem with continuous time and resource.
+
+    Parameters
+    ----------
+    instance : Dict of ndarray
+        Dictionary containing the instance data.
+    label : str
+        Label or name for the (solved) instance. Be sure to use one that
+        is sufficiently unique, to avoid conflicts or other unexpected
+        behavior.
+    """
+    def __init__(self, instance, label):
+        super().__init__(label, minimize=True)
+
+        self._njobs = len(instance['jobs'])
+        self._nevents = self._njobs * 2
+        resource = instance['constants']['resource_availability']
+        # TODO: fix to some sensible value
+        bigM = 100000
+
+        # Define variables
+        p = np.zeros(shape=(self._njobs, self._nevents),
+                     dtype=object)
+        t = np.zeros(shape=(self._nevents),
+                     dtype=object)
+        a = np.zeros(shape=(self._nevents, self._nevents),
+                     dtype=object)
+        b = np.zeros(shape=(self._nevents, self._nevents),
+                     dtype=object)
+
+        # For the numbering of jobs and events we will maintain the
+        # following relation: a job j is represented by two events in the
+        # order, at index i (start event) and i + 1 (completion event),
+        # where i = j * 2.
+
+        for j in range(self._njobs):
+            for i in range(self._nevents):
+                p[j, i] = pulp.LpVariable(
+                    f"p_{j},{i}",
+                    lowBound=0,
+                    cat=pulp.LpContinuous
+                )
+
+            # No job can recieve resources in the interval it completes
+            p[j, 2 * j + 1].upBound = 0
+
+        for i in range(self._nevents):
+            t[i] = pulp.LpVariable(
+                f"t_{i}",
+                lowBound=0,
+                cat=pulp.LpContinuous
+            )
+            for i2 in range(self._nevents):
+                if i != i2:
+                    a[i, i2] = pulp.LpVariable(
+                        f"a_{i},{i2}",
+                        lowBound=0,
+                        upBound=1,
+                        cat=pulp.LpInteger
+                    )
+                    b[i, i2] = pulp.LpVariable(
+                        f"b_{i},{i2}",
+                        lowBound=0,
+                        upBound=1,
+                        cat=pulp.LpInteger
+                    )
+
+        # Add objective
+        self._problem += pulp.lpSum([
+            instance['jobs'][j, 5] * t[j * 2 + 1] + instance['jobs'][j, 6]
+            for j in range(self._njobs)
+        ])
+
+        # Add constraints
+        for i in range(self._nevents):
+            for i2 in range(self._nevents):
+                if i != i2:
+                    # 1. Define the order amongst the events
+                    self._problem += t[i] - t[i2] - bigM * a[i2, i] <= 0, \
+                        f"Interval_order_{i}_{i2}"
+
+                    # 9. Interval resource availability
+                    self._problem += pulp.lpSum([
+                        p[j, i]
+                        for j in range(self._njobs)
+                    ]) - resource * (t[i2] - t[i]) - bigM * a[i2, i] <= 0, \
+                        f"Interval_capacity_{i}_{i2}"
+
+                    # 11. Successor variable backward
+                    self._problem += pulp.lpSum([
+                        (a[i, i3] - a[i2, i3])
+                        for i3 in range(self._nevents)
+                    ]) - 1 - (1 - b[i, i2]) * bigM <= 0, \
+                        f"Successor_variable_backward_b_{i},{i2}"
+
+                    # 12. Successor variable forward
+                    self._problem += pulp.lpSum([
+                        (a[i, i3] - a[i2, i3])
+                        for i3 in range(self._nevents)
+                    ]) - 1 + (1 - b[i, i2]) * bigM >= 0, \
+                        f"Successor_variable_forward_b_{i},{i2}"
+
+                if i2 > i:
+                    # 10. Mutual exclusivity of order variables
+                    self._problem += a[i, i2] + a[i2, i] == 1, \
+                        f"Mutual_exclusive_order_{i}_{i2}"
+
+        for j in range(self._njobs):
+            # 2. Enforce deadline
+            self._problem += t[2 * j + 1] - instance['jobs'][j, 4] <= 0, \
+                f"Deadline_job_{j}"
+
+            # 3. Enforce release time
+            self._problem += t[2 * j] - instance['jobs'][j, 3] >= 0, \
+                f"Release_time_{j}"
+
+            # 4. Meet resource requirement
+            self._problem += pulp.lpSum([
+                p[j, i]
+                for i in range(self._nevents)
+            ]) - instance['jobs'][j, 0] == 0, \
+                f"Resource_requirement_job_{j}"
+
+            for i in range(self._nevents):
+                # 7. Upper bound after completion
+                self._problem += p[j, i] - bigM * a[i, 2 * j + 1] <= 0, \
+                    f"Zero_after_completion_p{j},{i}"
+
+                # 8. Upper bound before start
+                self._problem += p[j, i] - bigM * (1 - a[i, 2 * j]) <= 0, \
+                    f"Zero_before_start_p{j},{i}"
+
+                for i2 in range(self._nevents):
+                    if i != i2:
+                        # 5. Lower bound
+                        self._problem += p[j, i] \
+                            - instance['jobs'][j, 1] * (t[i2] - t[i]) \
+                            + (1 - b[i, i2]) * bigM \
+                            + (1 - a[2 * j, i2]) * bigM \
+                            + (1 - a[i, 2 * j + 1]) * bigM >= 0, \
+                            f"Lower_bound_{j}_for_{i}_{i2}"
+
+                        # 6. Upper bound
+                        self._problem += p[j, i] \
+                            - instance['jobs'][j, 2] * (t[i2] - t[i]) \
+                            - a[i2, i] * bigM <= 0, \
+                            f"Upper_bound_{j}_for_{i}_{i2}"
+
+        # 13. Fix amount of successors
+        self._problem += pulp.lpSum([
+            b[i, i2]
+            for i in range(self._nevents)
+            for i2 in range(self._nevents) if i != i2
+        ]) == self._nevents - 1, \
+        "Amount_of_successors"
 
     def print_solution(self):
         """Print a human readable version of the (current) solution.
