@@ -593,7 +593,28 @@ class OrderBasedSubProblem(LP):
 
     def print_solution(self):
         """Print a human readable version of the (current) solution."""
-        pass
+        eventorder_str = ''
+        timings_str = ''
+        resource_str = ''
+
+        for event in self._event_list:
+            if event[0] <= 0:
+                eventorder_str += 'S_'
+            else:
+                eventorder_str += 'C_'
+            eventorder_str += f'{event[1]}; '
+
+        for timing in self._times:
+            if isinstance(timing, docplex.mp.dvar.Var):
+                timings_str += f'{timing.name}: {timing.solution_value}; '
+
+        for resource_row in self._resource:
+            for resource in resource_row:
+                if isinstance(resource, docplex.mp.dvar.Var):
+                    timings_str += f'{resource.name}: {resource.solution_value}; '
+        print(eventorder_str)
+        print(timings_str)
+        print(resource_str)
 
 
 class OrderBasedSubProblemWithSlack(OrderBasedSubProblem):
@@ -840,3 +861,22 @@ class OrderBasedSubProblemWithSlack(OrderBasedSubProblem):
         return [("resource", resource_slack, self._penalty_capacity),
                 ("upperbound", upper_slack, self._penalty_bounds), 
                 ("lowerbound", lower_slack, self._penalty_bounds)]
+
+    def print_solution(self):
+        super().print_solution()
+        slack_str = ''
+        for r_var in self._slack_resource:
+            if isinstance(r_var, docplex.mp.dvar.Var):
+                slack_str += f'{r_var.name}: {r_var.solution_value}; '
+
+        for uppers in self._slack_upperbound:
+            for u_var in uppers:
+                if isinstance(u_var, docplex.mp.dvar.Var):
+                    slack_str += f'{u_var.name}: {u_var.solution_value}; '
+
+        for lowers in self._slack_lowerbound:
+            for l_var in lowers:
+                if isinstance(l_var, docplex.mp.dvar.Var):
+                    slack_str += f'{l_var.name}: {l_var.solution_value}; '
+        print(slack_str)
+        
