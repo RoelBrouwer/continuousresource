@@ -827,13 +827,15 @@ class OrderBasedSubProblemWithSlack(OrderBasedSubProblem):
             if isinstance(r_var, docplex.mp.dvar.Var):
                 resource_slack += r_var.solution_value
 
-        for u_var in self._slack_upperbound:
-            if isinstance(u_var, docplex.mp.dvar.Var):
-                upper_slack += u_var.solution_value
+        for uppers in self._slack_upperbound:
+            for u_var in uppers:
+                if isinstance(u_var, docplex.mp.dvar.Var):
+                    upper_slack += u_var.solution_value
 
-        for l_var in self._slack_lowerbound:
-            if isinstance(l_var, docplex.mp.dvar.Var):
-                lower_slack += l_var.solution_value
+        for lowers in self._slack_lowerbound:
+            for l_var in lowers:
+                if isinstance(l_var, docplex.mp.dvar.Var):
+                    lower_slack += l_var.solution_value
 
         return [("resource", resource_slack, self._penalty_capacity),
                 ("upperbound", upper_slack, self._penalty_bounds), 
