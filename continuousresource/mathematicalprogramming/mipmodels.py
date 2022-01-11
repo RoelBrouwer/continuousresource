@@ -3,6 +3,10 @@ from abc import abstractmethod
 import numpy as np
 import pulp
 
+from continuousresource.mathematicalprogramming.utils \
+    import time_and_resource_vars_to_human_readable_solution_pulp, \
+    solution_to_csv_string
+
 
 class MIP(ABC):
     """Super class for all Mixed Integer Linear Programming models.
@@ -452,7 +456,19 @@ class ContinuousResourceMIP(MIP):
             for i in range(self._nevents)
             for i2 in range(self._nevents) if i != i2
         ]) == self._nevents - 1, \
-        "Amount_of_successors"
+            "Amount_of_successors"
+
+        # Store for reference
+        self._pvar = p
+        self._tvar = t
+
+    def get_solution_csv(self):
+        (event_labels, event_idx, event_timing, resource_consumption) = \
+            time_and_resource_vars_to_human_readable_solution_pulp(
+                self._tvar, self._pvar
+            )
+        return solution_to_csv_string(event_labels, event_idx, event_timing,
+                                      resource_consumption)
 
     def print_solution(self):
         """Print a human readable version of the (current) solution.

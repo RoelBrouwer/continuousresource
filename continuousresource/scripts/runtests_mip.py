@@ -72,7 +72,7 @@ from continuousresource.mathematicalprogramming.mipmodels \
 )
 def main(format, path, solver, output_dir, label, verbose):
     # TODO: document
-    timelimit = 3600
+    timelimit = 1800
 
     with open(os.path.join(output_dir,
                            f"{label}_summary.csv"), "w") as csv:
@@ -112,12 +112,15 @@ def main(format, path, solver, output_dir, label, verbose):
                                         f"{partial_label}_cont_mip")
             mip.solve(solver, timelimit)
             t_end = time.perf_counter()
+
             obj = pulp.value(mip.problem.objective)
             if obj is None:
                 obj = -1.0
-
-            # Print solution (eventlist) to file
-            # TODO?
+            else:
+                # Print solution to file
+                with open(os.path.join(output_dir, instance_name,
+                                       "solution.csv"), "w") as sol:
+                    sol.write(mip.get_solution_csv())
 
             # Write timings to text file
             with open(os.path.join(output_dir, instance_name,
