@@ -41,17 +41,18 @@ from continuousresource.probleminstances.jobarrayinstance \
 )
 def main(exportpath, exportformat, label):
     # TODO: think of useful parameters
-    for n in [5, 10, 20, 50, 100, 200]:  # [10, 20, 50, 100, 200]:
+    for n in [5, 10]:  # [10, 20, 50, 100, 200]:
         for r in [25.0, 50.0, 100.0, 200.0]:
-            instance = JobPropertiesInstance.generate_instance(n, r)
+            for i in range(5):
+                instance = JobPropertiesInstance.generate_instance(n, r, adversarial=True)
 
-            inst_label = f"{label}_n{n}r{r:.2f}"
-            if exportformat in ['both', 'binary']:
-                path = os.path.join(exportpath, inst_label)
-                JobPropertiesInstance.to_binary(path, instance)
-            if exportformat in ['both', 'csv']:
-                path = os.path.join(exportpath, inst_label)
-                JobPropertiesInstance.to_csv(path, instance)
+                inst_label = f"{label}_n{n}r{r:.2f}i{i}"
+                if exportformat in ['both', 'binary']:
+                    path = os.path.join(exportpath, inst_label)
+                    JobPropertiesInstance.to_binary(path, instance)
+                if exportformat in ['both', 'csv']:
+                    path = os.path.join(exportpath, inst_label)
+                    JobPropertiesInstance.to_csv(path, instance)
 
 
 if __name__ == "__main__":

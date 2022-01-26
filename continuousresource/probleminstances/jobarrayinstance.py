@@ -128,7 +128,8 @@ class JobPropertiesInstance(BaseInstance):
                 csv.write(f"{key};{instance['constants'][key]}\n")
 
     @staticmethod
-    def generate_instance(njobs, resource_availability, adversarial=False):
+    def generate_instance(njobs, resource_availability, adversarial=False,
+                          params=None):
         """Generate a single instance of a specific type.
 
         Parameters
@@ -141,6 +142,17 @@ class JobPropertiesInstance(BaseInstance):
         adversarial : boolean
             Generate an adversarial instance, where jobs with a high
             deadline also have a high weight.
+        params : Dict
+            Dictionary of parameters that can be used in generation. The
+            following parameters are recognized:
+                - `resource_fraction`: controls the limit on lower bounds
+                  based on resource availability;
+                - `requirement_fraction`: controls the limit on lower
+                  bounds based on a job's resource requirement;
+                - `release_date_shift`: shifts the window for generating
+                  release dates;
+                - `processing_window_size`: scales the upper bound for
+                  the size of processing windows.
 
         Returns
         -------
@@ -158,6 +170,21 @@ class JobPropertiesInstance(BaseInstance):
                 - `constants`, containing a dictionary of floating points
                   constants for the instance.
         """
+        # Define parameters
+        a_ml = 0.25
+        a_mu = 0.25
+        a_rs = 0.125
+        a_ps = 2
+        if params is not None:
+            if 'resource_fraction' in params:
+                a_ml = params['resource_fraction']
+            if 'requirement_fraction' in params:
+                a_mu = params['requirement_fraction']
+            if 'release_date_shift' in params:
+                a_rs = params['release_date_shift']
+            if 'processing_window_size' in params:
+                a_ps = params['processing_window_size']
+
         # Prepare instance containers
         jobs = np.empty(shape=(njobs, 7))
         constants = {
@@ -166,7 +193,7 @@ class JobPropertiesInstance(BaseInstance):
 
         # Sample njobs random processing times
         jobs[:, 0] = np.random.uniform(
-            low=0.0,
+            low=10.0,
             high=100.0,
             size=njobs
         ).round(decimals=2)
@@ -189,7 +216,7 @@ class JobPropertiesInstance(BaseInstance):
         jobs[:, 1] = np.array([
             np.random.uniform(
                 low=0.0,
-                high=min(0.25 * resource_availability, 0.25 * jobs[j, 0])
+                high=min(a_ml * resource_availability, a_mu * jobs[j, 0])
             )
             for j in range(njobs)
         ]).round(decimals=2)
@@ -197,7 +224,7 @@ class JobPropertiesInstance(BaseInstance):
         # Sample njobs random upper bounds
         jobs[:, 2] = np.array([
             np.random.uniform(
-                low=0.25 * jobs[j, 0],
+                low=a_mu * jobs[j, 0],
                 high=jobs[j, 0]
             )
             for j in range(njobs)
@@ -205,20 +232,20 @@ class JobPropertiesInstance(BaseInstance):
 
         # We take the minimal processing time as an upperbound for
         # for release date and deadline generation.
-        total_time = math.ceil(sum(jobs[:, 0]) / resource_availability)
+        total_time = sum(jobs[:, 0]) / resource_availability
 
         # Sample njobs random release times
         jobs[:, 3] = np.random.uniform(
-            low=0.0,
-            high=total_time,
+            low=(-1 * a_rs * total_time),
+            high=(1 - a_rs) * total_time,
             size=njobs
-        ).round(decimals=2)
+        ).clip(min=0.0).round(decimals=2)
 
         # Sample njobs random offsets and deduce deadlines
         jobs[:, 4] = np.array([
             jobs[j, 3] + np.random.uniform(
                 low=(jobs[j, 0] / min(resource_availability, jobs[j, 2])),
-                high=total_time
+                high=a_ps * total_time
             )
             for j in range(njobs)
         ]).round(decimals=2)
