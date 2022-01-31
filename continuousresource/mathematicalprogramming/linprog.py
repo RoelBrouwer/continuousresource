@@ -972,7 +972,6 @@ class FeasibilityWithoutLowerbound(OrderBasedSubProblem):
                 )
 
         for e in range(len(self._event_list) - 1):
-            print(e)
             # 3. Power capacity
             cstr = self._problem.sum(
                 self._resource[j, e] for j in range(
