@@ -77,7 +77,7 @@ def main(format, path, solver, output_dir, label, verbose):
     with open(os.path.join(output_dir,
                            f"{label}_summary.csv"), "w") as csv:
         csv.write(
-            'n;r;i;timelimit;time;objective\n'
+            'n;r;a;i;timelimit;time;objective\n'
         )
         for inst in os.listdir(path):
             if format == 'binary':
@@ -104,7 +104,7 @@ def main(format, path, solver, output_dir, label, verbose):
             os.mkdir(os.path.join(output_dir, instance_name))
 
             partial_label = f"{label}_{instance_name}"
-            params = re.match(r'\d*_?\d*_?n(\d+)r(\d+.\d+)i?(\d+)?',
+            params = re.match(r'.*n(\d+)r(\d+.\d+)a?([01])?i?(\d+)?',
                               instance_name)
 
             t_start = time.perf_counter()
@@ -133,9 +133,10 @@ Total measured time (s): {t_end - t_start}
                 )
 
             # Build-up CSV-file
+            # TODO: fix if either a or i is not included in filename
             csv.write(
                 f'{params.group(1)};{params.group(2)};{params.group(3)};'
-                f'{timelimit};{t_end - t_start};{obj}\n'
+                f'{params.group(4)};{timelimit};{t_end - t_start};{obj}\n'
             )
 
             # Move all files with names starting with the label
