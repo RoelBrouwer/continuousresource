@@ -479,3 +479,36 @@ class ContinuousResourceMIP(MIP):
         objective value.
         """
         print("Total profit = ", pulp.value(self._problem.objective))
+
+
+class ContinuousResourceMIPPlus(ContinuousResourceMIP):
+    """Class implementing a Mixed Integer Linear Programming model for a
+    resource scheduling problem with continuous time and resource.
+    Extends its parent by adding a number of (redundant) constraints on
+    the problem, to strengthen the solver's performance.
+
+    Parameters
+    ----------
+    instance : Dict of ndarray
+        Dictionary containing the instance data.
+    label : str
+        Label or name for the (solved) instance. Be sure to use one that
+        is sufficiently unique, to avoid conflicts or other unexpected
+        behavior.
+    """
+    def __init__(self, instance, label):
+        super().__init__(instance, label)
+        for j in range(self._njobs):
+            # A1. Restrict processing time (upper limit) by lower bound
+            self._problem += (
+                self._tvar[2 * j + 1] - self._tvar[2 * j]
+                - (instance['jobs'][j, 0] / instance['jobs'][j, 1])
+            ) <= 0, \
+                f"Processing_time_upper_limit_job_{j}"
+
+            # A2. Restrict processing time (lower limit) by upper bound
+            self._problem += (
+                self._tvar[2 * j + 1] - self._tvar[2 * j]
+                - (instance['jobs'][j, 0] / instance['jobs'][j, 2])
+            ) >= 0, \
+                f"Processing_time_lower_limit_job_{j}"
