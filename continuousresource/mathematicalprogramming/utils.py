@@ -44,7 +44,7 @@ def time_and_resource_vars_to_human_readable_solution_cplex(time_vars,
             - A two-dimensional array (n x |E|) of floats indicating the
               resource consumption for each job during all intervals.
     """
-    event_labels = np.zeros(shape=len(time_vars), dtype=str)
+    event_labels = np.zeros(shape=len(time_vars), dtype='U6')
     event_idx = np.zeros(shape=(len(time_vars), 2), dtype=int)
     event_timing = np.zeros(shape=len(time_vars), dtype=float)
     resource_consumption = np.zeros(shape=(len(time_vars) / 2, len(time_vars)),
@@ -164,7 +164,7 @@ def solution_to_csv_string(event_labels, event_idx, event_timing,
                            resource_consumption):  # , separator=';'):
     csv_string = 'LABELS;' + ';'.join(event_labels) + '\n'
     csv_string += 'JOB ID;' + ';'.join(map(str, event_idx[:, 0])) + '\n'
-    csv_string += 'JOB TYPE;' + ';'.join(map(str, event_idx[:, 1])) + '\n'
+    csv_string += 'EVENT TYPE;' + ';'.join(map(str, event_idx[:, 1])) + '\n'
     csv_string += 'TIME;' + ';'.join(map(str, event_timing)) + '\n'
 
     for j in range(len(resource_consumption)):
