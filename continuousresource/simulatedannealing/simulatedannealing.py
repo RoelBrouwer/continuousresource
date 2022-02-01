@@ -48,26 +48,15 @@ def simulated_annealing(search_space, initial_temperature, alfa, alfa_period,
         # Select a random neighbor
         fails, new_state = search_space.get_neighbor(temperature)
 
-        if (1 / (fails + 1)) <= 0.02:
-            stop_crit += 1
-
-        if stop_crit > math.ceil(alfa_period / 10):
-            # If we have accepted less than two percent of candidate
-            # solutions for over 10% of an alfa-period, we stop.
-            iters = i + 1
-            break
-
         if new_state is None:
             # If we were unable to accept a candidate solution from 200
-            # options, we perform a random walk.
-            new_state = search_space.random_walk()
+            # options, we give up.
+            iters = i + 1
+            break
 
         # Update temperature for next iteration block
         if i % alfa_period:
             temperature = temperature * alfa
-
-            # Reset stop criterium
-            stop_crit = 0
 
     # Return solution
     return iters, search_space.best
@@ -132,12 +121,9 @@ def simulated_annealing_verbose(search_space, initial_temperature, alfa,
             # Select a random neighbor
             fails, new_state = search_space.get_neighbor(temperature)
 
-            if (1 / (fails + 1)) <= 0.02:
-                stop_crit += 1
-
-            if stop_crit > math.ceil(alfa_period / 10):
-                # If we have accepted less than two percent of candidate
-                # solutions for over 10% of an alfa-period, we stop.
+            if new_state is None:
+                # If we were unable to accept a candidate solution from 200
+                # options, we stop.
                 iters = i + 1
 
                 slack_string = ""
@@ -153,37 +139,11 @@ def simulated_annealing_verbose(search_space, initial_temperature, alfa,
                     f'{fails}{slack_string}\n'
                 )
                 break
-
-            if new_state is None:
-                # If we were unable to accept a candidate solution from 200
-                # options, we perform a random walk.
-                new_state = search_space.random_walk()
-                if new_state.score == np.inf:
-                    # If we get a completely infeasible solution, we give
-                    # up.
-                    iters = i + 1
-
-                    slack_string = ""
-                    if search_space.current.model.with_slack:
-                        total_slack = 0
-                        for (label, value, weight) in search_space.current.slack:
-                            total_slack += value * weight
-                        slack_string = f";{total_slack}"
-
-                    csv.write(
-                        f'{i};{time.perf_counter() - start_time:0.2f};'
-                        f'{search_space.best.score};{search_space.current.score};'
-                        f'{fails}{slack_string}\n'
-                    )
-                    break
                     
 
             # Update temperature for next iteration block
             if i % alfa_period:
                 temperature = temperature * alfa
-
-                # Reset stop criterium
-                stop_crit = 0
 
             slack_string = ""
             if search_space.current.model.with_slack:
