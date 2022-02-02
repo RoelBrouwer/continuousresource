@@ -825,7 +825,7 @@ class OrderBasedSubProblemWithSlack(OrderBasedSubProblem):
             self._c_lower[job2, first_idx - 1].lhs += \
                 self._slack_lowerbound[job2, first_idx - 1]
             self._c_upper[job2, first_idx - 1].lhs -= \
-                self._slack_lowerbound[job2, first_idx - 1]
+                self._slack_upperbound[job2, first_idx - 1]
         else:
             raise ValueError(f"Type code not recognized: {type2}")
 
