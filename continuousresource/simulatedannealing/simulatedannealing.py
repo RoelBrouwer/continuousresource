@@ -218,8 +218,11 @@ class SearchSpace():
         initial.eventorder = initial.model.event_list
         # print(initial.model.problem.lp_string)
         self._current_solution = initial
+        initial.compute_score()
         self._best_solution = copy.copy(initial)
-        return t_end - t_start
+        self._best_solution.score = initial.score
+        self._best_solution.slack = initial.slack
+        return t_end - t_start, initial.score
 
     def get_neighbor_simultaneous(self):
         # Find candidates by looking at the adjacent pairs that were

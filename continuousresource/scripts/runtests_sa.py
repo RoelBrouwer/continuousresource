@@ -1,5 +1,6 @@
 import click
 import datetime
+import math
 import os
 import os.path
 import re
@@ -78,7 +79,8 @@ def main(format, path, solver, output_dir, label, verbose):
     with open(os.path.join(output_dir,
                            f"{label}_summary.csv"), "w") as csv:
         csv.write(
-            'n;r;T_init;alfa;alfa_period;stop;#iter;time;best;slack\n'
+            'n;r;a;i;T_init;alfa;alfa_period;stop;#iter;init_time;init_score;'
+            'time;best;slack\n'
         )
         for inst in os.listdir(path):
             if format == 'binary':
@@ -105,7 +107,7 @@ def main(format, path, solver, output_dir, label, verbose):
             os.mkdir(os.path.join(output_dir, instance_name))
 
             partial_label = f"{label}_{instance_name}"
-            params = re.match(r'\d*_?n(\d+)r(\d+.\d+)',
+            params = re.match(r'.*n(\d+)r(\d+.\d+)a?([01])?i?(\d+)?',
                               instance_name)
 
             dummy_eventlist = np.array([
@@ -116,19 +118,22 @@ def main(format, path, solver, output_dir, label, verbose):
             model_class = OrderBasedSubProblemWithSlack
 
             # TO BE varied:
-            slackpenalties = [5, 5]
-            initial_temperature = 100
+            slackpenalties = [10, 10]
+            initial_temperature = 30  # 50% acceptence for diff ~20
             alfa = 0.95
-            alfa_period = 100
-            cutoff = 1000
+            # neighborhood size = 2n - 1 for adjacent swap
+            alfa_period = (2 * int(params.group(1)) - 1) * 8
+            cutoff = alfa_period * 50
+            # Cool off to 4.34 for 20; 0.22 for 1 to accept only 1%
 
             t_start = time.perf_counter()
             search_space = SearchSpace()
-            sol_init_time = search_space.generate_initial_solution(
-                model_class, dummy_eventlist, instance['jobs'],
-                instance['constants']['resource_availability'],
-                slackpenalties, partial_label
-            )
+            sol_init_time, sol_init_score = \
+                search_space.generate_initial_solution(
+                    model_class, dummy_eventlist, instance['jobs'],
+                    instance['constants']['resource_availability'],
+                    slackpenalties, partial_label
+                )
 
             if verbose:
                 iters, solution = simulated_annealing_verbose(
@@ -172,10 +177,13 @@ Total time (s): {t_end - t_start}
                     total_slack += value * weight
 
             # Build-up CSV-file
+            # TODO: fix if either a or i is not included in filename
             csv.write(
-                f'{params.group(1)};{params.group(2)};{initial_temperature};'
-                f'{alfa};{alfa_period};{cutoff};{iters};{t_end - t_start};'
-                f'{solution.score};{total_slack}\n'
+                f'{params.group(1)};{params.group(2)};{params.group(3)};'
+                f'{params.group(4)};{initial_temperature};{alfa};'
+                f'{alfa_period};{cutoff};{iters};{sol_init_time};'
+                f'{sol_init_score};{t_end - t_start};{solution.score};'
+                f'{total_slack}\n'
             )
 
             # Move all files with names starting with the label
