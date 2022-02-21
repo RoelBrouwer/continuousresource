@@ -224,6 +224,96 @@ class SearchSpace():
         self._best_solution.slack = initial.slack
         return t_end - t_start, initial.score
 
+    def get_neighbor(self, temperature):
+        """Template method for finding candidate solutions.
+
+        Parameters
+        ----------
+        temperature : float
+            Current annealing temperature, used in determining if a
+            candidate with a lower objective should be accepted.
+
+        Returns
+        -------
+        int
+            Number of candidate solutions that were considered, but
+            rejected.
+        SearchSpaceState
+            New state for the search to continue with.
+        """
+        # TODO: Currently only implements the swap-neighborhood operator.
+        accepted = False
+        fail_count = 0
+
+        while not accepted:
+            # Obtain a new state
+            new_state, revert_info = self.get_neighbor_swap()
+            if new_state.score <= self._current_solution.score or \
+               np.random.random() <= math.exp((self._current_solution.score
+                                               - new_state.score)
+                                              / temperature):
+                # print(f"accepted score: {new_state.score}")
+                if new_state.score < self._best_solution.score:
+                    # print(f"best score: {new_state.score}")
+                    self._best_solution = copy.copy(new_state)
+                    self._best_solution.score = new_state.score
+                    self._best_solution.slack = new_state.slack
+                    # new_state.model.print_solution()
+                self._current_solution = new_state
+                accepted = True
+            else:
+                # Change the model back (the same model instance is used
+                # for both the current and candidate solutions).
+                self.get_neighbor_swap_revert(new_state, revert_info)
+
+                if fail_count > 200:
+                    return fail_count, None
+                fail_count += 1
+
+        return fail_count, new_state
+        
+        
+    def get_neighbor_swap(self):
+        """Finds candidate solutions by swapping adjacent event pairs.
+
+        Returns
+        -------
+        SearchSpaceState
+            New state for the search to continue with
+        int
+            ID of the first swapped event
+        """
+        swap_id = np.random.randint(
+            len(self._current_solution.model.event_list) - 1
+        )
+        while (self._current_solution.model.event_list[swap_id, 1] ==
+               self._current_solution.model.event_list[swap_id + 1, 1]):
+            swap_id = np.random.randint(
+                len(self._current_solution.model.event_list) - 1
+            )
+
+        new_state = copy.copy(self._current_solution)
+        new_state.model = self._current_solution.model
+        new_state.model.update_swap_neighbors(swap_id)
+        new_state.eventorder = copy.copy(
+            self._current_solution.model.event_list
+        )
+        new_state.compute_score()
+        return new_state, swap_id
+
+    def get_neighbor_swap_revert(self, new_state, swap_id):
+        """Reverts the model to its previous state.
+
+        Parameters
+        ----------
+        new_state : SearchSpaceState
+            Reference to the state containing a link to the model that
+            should be reverted.
+        swap_id : int
+            ID of the first event to be swapped back.
+        """
+        new_state.model.update_swap_neighbors(swap_id)
+
     def get_neighbor_simultaneous(self):
         # Find candidates by looking at the adjacent pairs that were
         # scheduled simultaneously.
@@ -248,70 +338,9 @@ class SearchSpace():
                     self._best_solution = copy.copy(new_state)
                     self._best_solution.score = new_state.score
                     self._best_solution.slack = new_state.slack
+                    # new_state.model.print_solution()
                 # if new_state.score > -1:
                 return new_state
-
-    def get_neighbor(self, temperature):
-        """Finds candidate solutions by swapping adjacent event pairs.
-
-        Parameters
-        ----------
-        temperature : float
-            Current annealing temperature, used in determining if a
-            candidate with a lower objective should be accepted.
-
-        Returns
-        -------
-        int
-            Number of candidate solutions that were considered, but
-            rejected.
-        SearchSpaceState
-            New state for the search to continue with
-        """
-        # Find candidates by looking at all adjacent pairs
-        accepted = False
-        fail_count = 0
-
-        # Select a random pair to swap
-        while not accepted:
-            swap_id = np.random.randint(
-                len(self._current_solution.model.event_list) - 1
-            )
-            while (self._current_solution.model.event_list[swap_id, 1] ==
-                   self._current_solution.model.event_list[swap_id + 1, 1]):
-                swap_id = np.random.randint(
-                    len(self._current_solution.model.event_list) - 1
-                )
-
-            new_state = copy.copy(self._current_solution)
-            new_state.model = self._current_solution.model
-            new_state.model.update_swap_neighbors(swap_id)
-            new_state.eventorder = copy.copy(
-                self._current_solution.model.event_list
-            )
-            new_state.compute_score()
-            if new_state.score <= self._current_solution.score or \
-               np.random.random() <= math.exp((self._current_solution.score
-                                               - new_state.score)
-                                              / temperature):
-                # print(f"accepted score: {new_state.score}")
-                if new_state.score < self._best_solution.score:
-                    # print(f"best score: {new_state.score}")
-                    self._best_solution = copy.copy(new_state)
-                    self._best_solution.score = new_state.score
-                    self._best_solution.slack = new_state.slack
-                self._current_solution = new_state
-                accepted = True
-            else:
-                # Change the model back (the same model instance is used
-                # for both the current and candidate solutions).
-                new_state.model.update_swap_neighbors(swap_id)
-
-                if fail_count > 200:
-                    return fail_count, None
-                fail_count += 1
-
-        return fail_count, new_state
 
     def random_walk(self, no_swaps=100):
         """Performs a random walk from the current solution by swapping
@@ -354,6 +383,7 @@ class SearchSpace():
             self._best_solution = copy.copy(new_state)
             self._best_solution.score = new_state.score
             self._best_solution.slack = new_state.slack
+            # new_state.model.print_solution()
         self._current_solution = new_state
 
         return new_state

@@ -174,6 +174,7 @@ Total time (s): {t_end - t_start}
             total_slack = 0
             if solution.model.with_slack and len(solution.slack) > 0:
                 for (slack_label, value, weight) in solution.slack:
+                    # print(f'{slack_label}: {value} * {weight}')
                     total_slack += value * weight
 
             # Build-up CSV-file
