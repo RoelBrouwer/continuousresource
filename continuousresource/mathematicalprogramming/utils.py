@@ -127,6 +127,8 @@ def time_and_resource_vars_to_human_readable_solution_pulp(time_vars,
                                            len(time_vars)), dtype=float)
 
     # Sort the array of time variables by t
+    # Note that events that occur at the same time may end up in the
+    # wrong order!
     sorted_time = sorted(time_vars, key=lambda a: a.varValue)
     event_idx_map = np.zeros(shape=len(time_vars), dtype=int)
 
