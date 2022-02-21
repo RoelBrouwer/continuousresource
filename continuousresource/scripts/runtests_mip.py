@@ -2,15 +2,18 @@ import click
 import datetime
 import os
 import os.path
-import pulp
 import re
 import shutil
 import time
+
+from docplex.mp.utils import DOcplexException
 
 from continuousresource.probleminstances.jobarrayinstance \
     import JobPropertiesInstance
 from continuousresource.mathematicalprogramming.mipmodels \
     import ContinuousResourceMIP
+from continuousresource.mathematicalprogramming.mipmodels \
+    import ContinuousResourceMIPPlus
 
 
 @click.command(context_settings=dict(help_option_names=['-h', '--help']))
@@ -72,7 +75,7 @@ from continuousresource.mathematicalprogramming.mipmodels \
 )
 def main(format, path, solver, output_dir, label, verbose):
     # TODO: document
-    timelimit = 1800
+    timelimit = 600
 
     with open(os.path.join(output_dir,
                            f"{label}_summary.csv"), "w") as csv:
@@ -108,19 +111,25 @@ def main(format, path, solver, output_dir, label, verbose):
                               instance_name)
 
             t_start = time.perf_counter()
-            mip = ContinuousResourceMIP(instance,
-                                        f"{partial_label}_cont_mip")
-            mip.solve(solver, timelimit)
+            mip = ContinuousResourceMIPPlus(
+                instance,
+                f"{partial_label}_cont_mip",
+                solver
+            )
+            mip.solve(timelimit)
             t_end = time.perf_counter()
 
-            obj = pulp.value(mip.problem.objective)
-            if obj is None:
-                obj = -1.0
-            else:
+            obj = 0.0
+            try:
+                obj = mip.problem.objective_value
+
                 # Print solution to file
                 with open(os.path.join(output_dir, instance_name,
                                        "solution.csv"), "w") as sol:
                     sol.write(mip.get_solution_csv())
+
+            except DOcplexException:
+                obj = -1.0
 
             # Write timings to text file
             with open(os.path.join(output_dir, instance_name,

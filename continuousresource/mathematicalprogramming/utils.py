@@ -47,8 +47,8 @@ def time_and_resource_vars_to_human_readable_solution_cplex(time_vars,
     event_labels = np.zeros(shape=len(time_vars), dtype='U6')
     event_idx = np.zeros(shape=(len(time_vars), 2), dtype=int)
     event_timing = np.zeros(shape=len(time_vars), dtype=float)
-    resource_consumption = np.zeros(shape=(len(time_vars) / 2, len(time_vars)),
-                                    dtype=float)
+    resource_consumption = np.zeros(shape=(math.floor(len(time_vars) / 2),
+                                           len(time_vars)), dtype=float)
 
     # Sort the array of time variables by t
     sorted_time = sorted(time_vars, key=lambda a: a.solution_value)
