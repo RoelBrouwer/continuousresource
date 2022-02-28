@@ -8,8 +8,9 @@ import pulp
 import re
 
 
-def time_and_resource_vars_to_human_readable_solution_cplex(time_vars,
-                                                            resource_vars):
+def time_and_resource_vars_to_human_readable_solution_cplex(
+    time_vars, resource_vars, time_label="t", resource_label="p"
+):
     """Constructs a human readble (tabular) version of the solution
     represented by the variables as passed in the parameters.
 
@@ -29,6 +30,12 @@ def time_and_resource_vars_to_human_readable_solution_cplex(time_vars,
         from the label (p_{j},{e}) as follows:
             - The job index is {j};
             - The event index is {e}.
+    time_label : str
+        Prefix for the time variable names. Variable names are assumed to
+        be of the following form: {time_label}_{e}.
+    resource_label : str
+        Prefix for the resourcevariable names. Variable names are assumed
+        to be of the following form: {resource_label}_{j},{e}.
 
     Returns
     -------
@@ -56,7 +63,9 @@ def time_and_resource_vars_to_human_readable_solution_cplex(time_vars,
 
     # Extract event related information
     for i in range(len(sorted_time)):
-        idx = int(re.match(r't_(\d+)', sorted_time[i].name).group(1))
+        idx = int(
+            re.match(fr'{time_label}_(\d+)', sorted_time[i].name).group(1)
+        )
         event_idx_map[idx] = i
 
         event_idx[i][0] = math.floor(idx / 2)  # Job ID
@@ -72,7 +81,7 @@ def time_and_resource_vars_to_human_readable_solution_cplex(time_vars,
         for p in row:
             if isinstance(p, docplex.mp.dvar.Var):
                 # Parse the label
-                idcs = re.match(r'p_(\d+),(\d+)', p.name)
+                idcs = re.match(fr'{resource_label}_(\d+),(\d+)', p.name)
                 j = int(idcs.group(1))
                 e = int(idcs.group(2))
 
