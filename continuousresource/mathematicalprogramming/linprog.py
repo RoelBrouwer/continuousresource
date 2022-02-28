@@ -3,7 +3,10 @@ from abc import abstractmethod
 import bisect
 import docplex.mp.model
 import numpy as np
-import pulp
+
+from continuousresource.mathematicalprogramming.utils \
+    import time_and_resource_vars_to_human_readable_solution_cplex, \
+    solution_to_csv_string
 
 
 class LP(ABC):
@@ -283,7 +286,8 @@ class OrderBasedSubProblem(LP):
             )
 
         for j in range(len(self._job_properties)):
-            for e in range(self._event_map[j, 0], self._event_map[j, 1]):
+            for i in range(self._event_map[j, 0], self._event_map[j, 1]):
+                e = self._event_list[i, 1] * 2 + self._event_list[i, 0]
                 self._resource[j, e] = self._problem.continuous_var(
                     name=f"p_{j},{e}",
                     lb=0
@@ -291,16 +295,16 @@ class OrderBasedSubProblem(LP):
 
         # Define objective
         self._cost = self._problem.sum(
-            self._job_properties[j, 5] * self._times[self._event_map[j, 1]] +
+            self._job_properties[j, 5] * self._times[2 * j + 1] +
             self._job_properties[j, 6]
             for j in range(len(self._job_properties))
         )
         self._problem.minimize(self._cost)
 
         # Initialize constraints
-        self._c_order = np.zeros(shape=len(self._event_list) - 1,
+        self._c_order = np.zeros(shape=len(self._event_list),
                                  dtype=object)
-        self._c_availability = np.zeros(shape=len(self._event_list) - 1,
+        self._c_availability = np.zeros(shape=len(self._event_list),
                                         dtype=object)
         self._c_deadline = np.zeros(shape=len(self._job_properties),
                                     dtype=object)
@@ -309,16 +313,18 @@ class OrderBasedSubProblem(LP):
         self._c_resource = np.zeros(shape=len(self._job_properties),
                                     dtype=object)
         self._c_lower = np.zeros(shape=(len(self._job_properties),
-                                        len(self._event_list) - 1),
+                                        len(self._event_list)),
                                  dtype=object)
         self._c_upper = np.zeros(shape=(len(self._job_properties),
-                                        len(self._event_list) - 1),
+                                        len(self._event_list)),
                                  dtype=object)
 
-        for e in range(len(self._event_list) - 1):
+        for i in range(len(self._event_list) - 1):
+            e = self._event_list[i, 1] * 2 + self._event_list[i, 0]
+            e1 = self._event_list[i + 1, 1] * 2 + self._event_list[i + 1, 0]
             # 1. Event Order
             self._c_order[e] = self._problem.add_constraint(
-                ct=self._times[e] - self._times[e + 1] <= 0,
+                ct=self._times[e] - self._times[e1] <= 0,
                 ctname=f"event_order_{e}"
             )
             # 7. Resource availability
@@ -327,7 +333,7 @@ class OrderBasedSubProblem(LP):
                     self._resource[j, e] for j in range(
                         len(self._job_properties)
                     )
-                ) - self._capacity * (self._times[e + 1]
+                ) - self._capacity * (self._times[e1]
                                       - self._times[e]) <= 0,
                 ctname=f"resource_availability_{e}"
             )
@@ -335,38 +341,44 @@ class OrderBasedSubProblem(LP):
         for j in range(len(self._job_properties)):
             # 2. Deadline
             self._c_deadline[j] = self._problem.add_constraint(
-                ct=self._times[self._event_map[j, 1]]
+                ct=self._times[2 * j + 1]
                 - self._job_properties[j, 4] <= 0,
                 ctname=f"deadline_{j}"
             )
             # 3. Release date
             self._c_release[j] = self._problem.add_constraint(
-                ct=self._times[self._event_map[j, 0]]
+                ct=self._times[2 * j]
                 - self._job_properties[j, 3] >= 0,
                 ctname=f"release_{j}"
             )
             # 4. Resource requirement
             self._c_resource[j] = self._problem.add_constraint(
                 ct=self._problem.sum(
-                    self._resource[j, e] for e in range(
+                    self._resource[
+                        j,
+                        self._event_list[i, 1] * 2 + self._event_list[i, 0]
+                    ] for i in range(
                         self._event_map[j, 0], self._event_map[j, 1]
                     )
                 ) - self._job_properties[j, 0] == 0,
                 ctname=f"resource_{j}"
             )
 
-            for e in range(self._event_map[j, 0], self._event_map[j, 1]):
+            for i in range(self._event_map[j, 0], self._event_map[j, 1]):
+                e = self._event_list[i, 1] * 2 + self._event_list[i, 0]
+                e1 = self._event_list[i + 1, 1] * 2 \
+                    + self._event_list[i + 1, 0]
                 # 5. Lower bound
                 self._c_lower[j, e] = self._problem.add_constraint(
                     ct=self._resource[j, e] -
-                    self._job_properties[j, 1] * (self._times[e + 1]
+                    self._job_properties[j, 1] * (self._times[e1]
                                                   - self._times[e]) >= 0,
                     ctname=f"lower_bound_{j},{e}"
                 )
                 # 6. Upper bound
                 self._c_upper[j, e] = self._problem.add_constraint(
                     ct=self._resource[j, e] -
-                    self._job_properties[j, 2] * (self._times[e + 1]
+                    self._job_properties[j, 2] * (self._times[e1]
                                                   - self._times[e]) <= 0,
                     ctname=f"upper_bound_{j},{e}"
                 )
@@ -385,6 +397,8 @@ class OrderBasedSubProblem(LP):
         type1 = self._event_list[first_idx, 0]
         job2 = self._event_list[first_idx + 1, 1]
         type2 = self._event_list[first_idx + 1, 0]
+        e1 = job1 * 2 + type1
+        e2 = job2 * 2 + type2
 
         if job1 == job2 and type1 == 1:
             raise RuntimeError("Cannot put a job's completion before its"
@@ -393,65 +407,98 @@ class OrderBasedSubProblem(LP):
         # update self._event_list
         self._event_list[[first_idx, first_idx + 1], :] = \
             self._event_list[[first_idx + 1, first_idx], :]
+        # self._event_list[first_idx] = [type2, job2]
+        # self._event_list[first_idx + 1] = [type1, job1]
 
         # update self._event_map
         self._event_map[job1, type1] += 1
         self._event_map[job2, type2] -= 1
 
         # update self._resource variables
-        if type1 == 1 and not isinstance(self._resource[job1, first_idx],
+        if type1 == 1 and not isinstance(self._resource[job1, e2],
                                          docplex.mp.dvar.Var):
             # The completion of job1 happens one interval later, a new
             # variable must be added.
-            self._resource[job1, first_idx] = \
+            self._resource[job1, e2] = \
                 self._problem.continuous_var(
-                    name=f"p_{job1},{first_idx}",
+                    name=f"p_{job1},{e2}",
                     lb=0
                 )
-        if type2 == 0 and not isinstance(self._resource[job2, first_idx],
+        if type2 == 0 and not isinstance(self._resource[job2, e2],
                                          docplex.mp.dvar.Var):
             # The start of job2 happens one interval earlier, a new
             # variable must be added.
-            self._resource[job2, first_idx] = \
+            self._resource[job2, e2] = \
                 self._problem.continuous_var(
-                    name=f"p_{job2},{first_idx}",
+                    name=f"p_{job2},{e2}",
                     lb=0
                 )
 
         # update appropriate self._c_order and self._c_availability
         if first_idx > 0:
-            self._c_order[first_idx - 1].lhs = \
-                self._times[first_idx - 1] - self._times[first_idx + 1]
-            self._c_availability[first_idx - 1].lhs = \
+            e0 = self._event_list[first_idx - 1, 1] * 2 \
+                + self._event_list[first_idx - 1, 0]
+            self._c_order[e0].lhs = \
+                self._times[e0] - self._times[e2]
+            self._c_availability[e0].lhs = \
                 self._problem.sum(
-                    self._resource[j, first_idx - 1] for j in range(
+                    self._resource[j, e0] for j in range(
                         len(self._job_properties)
                     )
-                ) - self._capacity * (self._times[first_idx + 1]
-                                      - self._times[first_idx - 1])
-        self._c_order[first_idx].lhs = \
-            self._times[first_idx + 1] - self._times[first_idx]
-        self._c_availability[first_idx].lhs = \
-            self._problem.sum(
-                self._resource[j, first_idx] for j in range(
-                    len(self._job_properties)
-                )
-            ) - self._capacity * (self._times[first_idx]
-                                  - self._times[first_idx + 1])
+                ) - self._capacity * (self._times[e2]
+                                      - self._times[e0])
+
+        if isinstance(self._c_order[e2], docplex.mp.constr.LinearConstraint):
+            self._c_order[e2].lhs = \
+                self._times[e2] - self._times[e1]
+        else:
+            self._c_order[e2] = self._problem.add_constraint(
+                ct=self._times[e2] - self._times[e1] <= 0,
+                ctname=f"event_order_{e2}"
+            )
+        if isinstance(self._c_availability[e2],
+                      docplex.mp.constr.LinearConstraint):
+            self._c_availability[e2].lhs = \
+                self._problem.sum(
+                    self._resource[j, e2] for j in range(
+                        len(self._job_properties)
+                    )
+                ) - self._capacity * (self._times[e1]
+                                      - self._times[e2])
+        else:
+            self._c_availability[e2] = self._problem.add_constraint(
+                ct=self._problem.sum(
+                    self._resource[j, e2] for j in range(
+                        len(self._job_properties)
+                    )
+                ) - self._capacity * (self._times[e1]
+                                      - self._times[e2]) <= 0,
+                ctname=f"resource_availability_{e2}"
+            )
+
         if first_idx + 2 < len(self._event_list):
-            self._c_order[first_idx + 1].lhs = \
-                self._times[first_idx] - self._times[first_idx + 2]
-            self._c_availability[first_idx + 1].lhs = \
+            e3 = self._event_list[first_idx + 2, 1] * 2 \
+                + self._event_list[first_idx + 2, 0]
+            self._c_order[e1].lhs = \
+                self._times[e1] - self._times[e3]
+            self._c_availability[e1].lhs = \
                 self._problem.sum(
-                    self._resource[j, first_idx + 1] for j in range(
+                    self._resource[j, e1] for j in range(
                         len(self._job_properties)
                     )
-                ) - self._capacity * (self._times[first_idx + 2]
-                                      - self._times[first_idx])
+                ) - self._capacity * (self._times[e3]
+                                      - self._times[e1])
+        else:
+            self._problem.remove_constraints([
+                self._c_order[e1],
+                self._c_availability[e1]
+            ])
+            self._c_order[e1] = None
+            self._c_availability[e1] = None
 
         # update self._times positions
-        self._times[[first_idx, first_idx + 1]] = \
-            self._times[[first_idx + 1, first_idx]]
+        # self._times[[first_idx, first_idx + 1]] = \
+        #     self._times[[first_idx + 1, first_idx]]
 
         # update appropriate self._c_lower & self._c_upper
         if type1 == 1:
@@ -460,87 +507,93 @@ class OrderBasedSubProblem(LP):
             # first_index + 1, i.e. has to be enforced during the
             # preceding interval
             # 5. Lower bound
-            self._c_lower[job1, first_idx] = self._problem.add_constraint(
-                ct=self._resource[job1, first_idx] -
-                self._job_properties[job1, 1] * (self._times[first_idx + 1]
-                                                 - self._times[first_idx])
+            self._c_lower[job1, e2] = self._problem.add_constraint(
+                ct=self._resource[job1, e2] -
+                self._job_properties[job1, 1] * (self._times[e1]
+                                                 - self._times[e2])
                 >= 0,
-                ctname=f"lower_bound_{job1},{first_idx}"
+                ctname=f"lower_bound_{job1},{e2}"
             )
             # 6. Upper bound
-            self._c_upper[job1, first_idx] = self._problem.add_constraint(
-                ct=self._resource[job1, first_idx] -
-                self._job_properties[job1, 2] * (self._times[first_idx + 1]
-                                                 - self._times[first_idx])
+            self._c_upper[job1, e2] = self._problem.add_constraint(
+                ct=self._resource[job1, e2] -
+                self._job_properties[job1, 2] * (self._times[e1]
+                                                 - self._times[e2])
                 <= 0,
-                ctname=f"upper_bound_{job1},{first_idx}"
+                ctname=f"upper_bound_{job1},{e2}"
             )
             # In addition, the time variables need to be updated in two
             # more constraints.
             # No need to check for first_idx > 0: this is always true
             assert first_idx > 0
-            self._c_lower[job1, first_idx - 1].lhs = \
-                self._resource[job1, first_idx - 1] - \
-                self._job_properties[job1, 1] * (self._times[first_idx]
-                                                 - self._times[first_idx - 1])
-            self._c_upper[job1, first_idx - 1].lhs = \
-                self._resource[job1, first_idx - 1] - \
-                self._job_properties[job1, 2] * (self._times[first_idx]
-                                                 - self._times[first_idx - 1])
+            e0 = self._event_list[first_idx - 1, 1] * 2 \
+                + self._event_list[first_idx - 1, 0]
+            self._c_lower[job1, e0].lhs = \
+                self._resource[job1, e0] - \
+                self._job_properties[job1, 1] * (self._times[e2]
+                                                 - self._times[e0])
+            self._c_upper[job1, e0].lhs = \
+                self._resource[job1, e0] - \
+                self._job_properties[job1, 2] * (self._times[e2]
+                                                 - self._times[e0])
         elif type1 == 0:
             # Delayed start, so bounds need to be enforced for one fewer
             # interval
             self._problem.remove_constraints([
-                self._c_lower[job1, first_idx],
-                self._c_upper[job1, first_idx]
+                self._c_lower[job1, e2],
+                self._c_upper[job1, e2]
             ])
-            self._c_lower[job1, first_idx] = None
-            self._c_upper[job1, first_idx] = None
+            self._c_lower[job1, e2] = None
+            self._c_upper[job1, e2] = None
             # In addition, the time variables need to be updated in two
             # more constraints.
             if first_idx + 2 < len(self._event_list):
-                self._c_lower[job1, first_idx + 1].lhs = \
-                    self._resource[job1, first_idx + 1] - \
+                e3 = self._event_list[first_idx + 2, 1] * 2 \
+                    + self._event_list[first_idx + 2, 0]
+                self._c_lower[job1, e1].lhs = \
+                    self._resource[job1, e1] - \
                     self._job_properties[job1, 1] * \
-                    (self._times[first_idx + 2] - self._times[first_idx + 1])
-                self._c_upper[job1, first_idx + 1].lhs = \
-                    self._resource[job1, first_idx + 1] - \
+                    (self._times[e3] - self._times[e1])
+                self._c_upper[job1, e1].lhs = \
+                    self._resource[job1, e1] - \
                     self._job_properties[job1, 2] * \
-                    (self._times[first_idx + 2] - self._times[first_idx + 1])
+                    (self._times[e3] - self._times[e1])
         else:
             raise ValueError(f"Type code not recognized: {type1}")
 
         if type2 == 0:
             # Earlier start, so bounds need to be enforced for an
             # additional interval
+            # No need to check boundary: this always holds
+            assert first_idx + 2 < len(self._event_list)
+            e3 = self._event_list[first_idx + 2, 1] * 2 \
+                + self._event_list[first_idx + 2, 0]
             # 5. Lower bound
-            self._c_lower[job2, first_idx] = self._problem.add_constraint(
-                ct=self._resource[job2, first_idx] -
-                self._job_properties[job2, 1] * (self._times[first_idx + 1]
-                                                 - self._times[first_idx])
+            self._c_lower[job2, e1] = self._problem.add_constraint(
+                ct=self._resource[job2, e1] -
+                self._job_properties[job2, 1] * (self._times[e3]
+                                                 - self._times[e1])
                 >= 0,
-                ctname=f"lower_bound_{job2},{first_idx}"
+                ctname=f"lower_bound_{job2},{e1}"
             )
             # 6. Upper bound
-            self._c_upper[job2, first_idx] = self._problem.add_constraint(
-                ct=self._resource[job2, first_idx] -
-                self._job_properties[job2, 2] * (self._times[first_idx + 1]
-                                                 - self._times[first_idx])
+            self._c_upper[job2, e1] = self._problem.add_constraint(
+                ct=self._resource[job2, e1] -
+                self._job_properties[job2, 2] * (self._times[e3]
+                                                 - self._times[e1])
                 <= 0,
-                ctname=f"upper_bound_{job2},{first_idx}"
+                ctname=f"upper_bound_{job2},{e1}"
             )
             # In addition, the time variables need to be updated in two
             # more constraints.
-            # No need to check boundary: this always holds
-            assert first_idx + 2 < len(self._event_list)
-            self._c_lower[job2, first_idx + 1].lhs = \
-                self._resource[job2, first_idx + 1] - \
+            self._c_lower[job2, e2].lhs = \
+                self._resource[job2, e2] - \
                 self._job_properties[job2, 1] * \
-                (self._times[first_idx + 2] - self._times[first_idx + 1])
-            self._c_upper[job2, first_idx + 1].lhs = \
-                self._resource[job2, first_idx + 1] - \
+                (self._times[e1] - self._times[e2])
+            self._c_upper[job2, e2].lhs = \
+                self._resource[job2, e2] - \
                 self._job_properties[job2, 2] * \
-                (self._times[first_idx + 2] - self._times[first_idx + 1])
+                (self._times[e1] - self._times[e2])
         elif type2 == 1:
             # Earlier completion, so bounds need to be enforced for one
             # fewer interval (and it is not enforced on the last
@@ -548,30 +601,35 @@ class OrderBasedSubProblem(LP):
             # one).
             if job1 != job2:
                 self._problem.remove_constraints([
-                    self._c_lower[job2, first_idx],
-                    self._c_upper[job2, first_idx]
+                    self._c_lower[job2, e1],
+                    self._c_upper[job2, e1]
                 ])
-                self._c_lower[job2, first_idx] = None
-                self._c_upper[job2, first_idx] = None
+                self._c_lower[job2, e1] = None
+                self._c_upper[job2, e1] = None
             # In addition, the time variables need to be updated in two
             # more constraints.
             # No need to check for first_idx > 0: this is always true
             assert first_idx > 0
-            self._c_lower[job2, first_idx - 1].lhs = \
-                self._resource[job2, first_idx - 1] - \
-                self._job_properties[job2, 1] * (self._times[first_idx]
-                                                 - self._times[first_idx - 1])
-            self._c_upper[job2, first_idx - 1].lhs = \
-                self._resource[job2, first_idx - 1] - \
-                self._job_properties[job2, 2] * (self._times[first_idx]
-                                                 - self._times[first_idx - 1])
+            e0 = self._event_list[first_idx - 1, 1] * 2 \
+                + self._event_list[first_idx - 1, 0]
+            self._c_lower[job2, e0].lhs = \
+                self._resource[job2, e0] - \
+                self._job_properties[job2, 1] * (self._times[e2]
+                                                 - self._times[e0])
+            self._c_upper[job2, e0].lhs = \
+                self._resource[job2, e0] - \
+                self._job_properties[job2, 2] * (self._times[e2]
+                                                 - self._times[e0])
         else:
             raise ValueError(f"Type code not recognized: {type2}")
 
         # update appropriate self._c_resource
         for j in [job1, job2]:
             self._c_resource[j].lhs = self._problem.sum(
-                self._resource[j, e] for e in range(
+                self._resource[
+                    j,
+                    self._event_list[i, 1] * 2 + self._event_list[i, 0]
+                ] for i in range(
                     self._event_map[j, 0], self._event_map[j, 1]
                 )
             ) - self._job_properties[j, 0]
@@ -591,6 +649,14 @@ class OrderBasedSubProblem(LP):
         # schedule[:,:2] = event_list
         # time_assignment = np.zeros(shape=len(self._event_list))
         return np.array([t.solution_value for t in self._times])
+
+    def get_solution_csv(self):
+        (event_labels, event_idx, event_timing, resource_consumption) = \
+            time_and_resource_vars_to_human_readable_solution_cplex(
+                self._times, self._resource,
+            )
+        return solution_to_csv_string(event_labels, event_idx, event_timing,
+                                      resource_consumption)
 
     def print_solution(self):
         """Print a human readable version of the (current) solution."""
@@ -612,7 +678,8 @@ class OrderBasedSubProblem(LP):
         for resource_row in self._resource:
             for resource in resource_row:
                 if isinstance(resource, docplex.mp.dvar.Var):
-                    timings_str += f'{resource.name}: {resource.solution_value}; '
+                    timings_str += (f'{resource.name}:'
+                                    f' {resource.solution_value}; ')
         print(eventorder_str)
         print(timings_str)
         print(resource_str)
@@ -686,7 +753,8 @@ class OrderBasedSubProblemWithSlack(OrderBasedSubProblem):
             )
 
         for j in range(len(self._job_properties)):
-            for e in range(self._event_map[j, 0], self._event_map[j, 1]):
+            for i in range(self._event_map[j, 0], self._event_map[j, 1]):
+                e = self._event_list[i, 1] * 2 + self._event_list[i, 0]
                 self._slack_upperbound[j, e] = self._problem.continuous_var(
                     name=f"s+_{j},{e}",
                     lb=0
@@ -711,12 +779,14 @@ class OrderBasedSubProblemWithSlack(OrderBasedSubProblem):
 
         # Add slack variables to appropriate constraints
         # TODO: test if this actually works...
-        for e in range(len(self._event_list) - 1):
+        for i in range(len(self._event_list) - 1):
+            e = self._event_list[i, 1] * 2 + self._event_list[i, 0]
             # 7. Resource availability
             self._c_availability[e].lhs -= self._slack_resource[e]
 
         for j in range(len(self._job_properties)):
-            for e in range(self._event_map[j, 0], self._event_map[j, 1]):
+            for i in range(self._event_map[j, 0], self._event_map[j, 1]):
+                e = self._event_list[i, 1] * 2 + self._event_list[i, 0]
                 # 5. Lower bound
                 self._c_lower[j, e].lhs += self._slack_lowerbound[j, e]
                 # 6. Upper bound
@@ -729,15 +799,19 @@ class OrderBasedSubProblemWithSlack(OrderBasedSubProblem):
         type2 = self._event_list[first_idx, 0]
         job1 = self._event_list[first_idx + 1, 1]
         type1 = self._event_list[first_idx + 1, 0]
+        e1 = job1 * 2 + type1
+        e2 = job2 * 2 + type2
 
-        # update appropriate self._c_order and self._c_availability
+        # update appropriate self._c_availability
         if first_idx > 0:
-            self._c_availability[first_idx - 1].lhs -= \
-                self._slack_resource[first_idx - 1]
-        self._c_availability[first_idx].lhs -= self._slack_resource[first_idx]
+            e0 = self._event_list[first_idx - 1, 1] * 2 \
+                + self._event_list[first_idx - 1, 0]
+            self._c_availability[e0].lhs -= \
+                self._slack_resource[e0]
+        self._c_availability[e2].lhs -= self._slack_resource[e2]
         if first_idx + 2 < len(self._event_list):
-            self._c_availability[first_idx + 1].lhs -= \
-                self._slack_resource[first_idx + 1]
+            self._c_availability[e1].lhs -= \
+                self._slack_resource[e1]
 
         # update appropriate self._c_lower & self._c_upper
         if type1 == 1:
@@ -745,87 +819,89 @@ class OrderBasedSubProblemWithSlack(OrderBasedSubProblem):
             # additional interval (now completes at the start of
             # first_index + 1, i.e. has to be enforced during the
             # preceding interval
-            if not isinstance(self._slack_lowerbound[job1, first_idx],
+            if not isinstance(self._slack_lowerbound[job1, e2],
                               docplex.mp.dvar.Var):
-                self._slack_lowerbound[job1, first_idx] = \
+                self._slack_lowerbound[job1, e2] = \
                     self._problem.continuous_var(
-                        name=f"s-_{job1},{first_idx}",
+                        name=f"s-_{job1},{e2}",
                         lb=0
                     )
-                self._slack_upperbound[job1, first_idx] = \
+                self._slack_upperbound[job1, e2] = \
                     self._problem.continuous_var(
-                        name=f"s+_{job1},{first_idx}",
+                        name=f"s+_{job1},{e2}",
                         lb=0
                     )
                 self._cost += self._penalty_bounds * \
-                    (self._slack_lowerbound[job1, first_idx] +
-                     self._slack_upperbound[job1, first_idx])
+                    (self._slack_lowerbound[job1, e2] +
+                     self._slack_upperbound[job1, e2])
             # 5. Lower bound
-            self._c_lower[job1, first_idx].lhs += \
-                self._slack_lowerbound[job1, first_idx]
+            self._c_lower[job1, e2].lhs += \
+                self._slack_lowerbound[job1, e2]
             # 6. Upper bound
-            self._c_upper[job1, first_idx].lhs -= \
-                self._slack_upperbound[job1, first_idx]
+            self._c_upper[job1, e2].lhs -= \
+                self._slack_upperbound[job1, e2]
             # In addition, the time variables need to be updated in two
             # more constraints.
             # No need to check for first_idx > 0: this is always true
             assert first_idx > 0
-            self._c_lower[job1, first_idx - 1].lhs += \
-                self._slack_lowerbound[job1, first_idx - 1]
-            self._c_upper[job1, first_idx - 1].lhs -= \
-                self._slack_upperbound[job1, first_idx - 1]
+            e0 = self._event_list[first_idx - 1, 1] * 2 \
+                + self._event_list[first_idx - 1, 0]
+            self._c_lower[job1, e0].lhs += \
+                self._slack_lowerbound[job1, e0]
+            self._c_upper[job1, e0].lhs -= \
+                self._slack_upperbound[job1, e0]
         elif type1 == 0:
             # In addition, the time variables need to be updated in two
             # more constraints.
             if first_idx + 2 < len(self._event_list):
-                self._c_lower[job1, first_idx + 1].lhs += \
-                    self._slack_lowerbound[job1, first_idx + 1]
-                self._c_upper[job1, first_idx + 1].lhs -= \
-                    self._slack_upperbound[job1, first_idx + 1]
+                self._c_lower[job1, e1].lhs += \
+                    self._slack_lowerbound[job1, e1]
+                self._c_upper[job1, e1].lhs -= \
+                    self._slack_upperbound[job1, e1]
         else:
             raise ValueError(f"Type code not recognized: {type1}")
 
         if type2 == 0:
             # Earlier start, so bounds need to be enforced for an
             # additional interval
-            if not isinstance(self._slack_lowerbound[job2, first_idx],
+            if not isinstance(self._slack_lowerbound[job2, e1],
                               docplex.mp.dvar.Var):
-                self._slack_lowerbound[job2, first_idx] = \
+                self._slack_lowerbound[job2, e1] = \
                     self._problem.continuous_var(
-                        name=f"s-_{job2},{first_idx}",
+                        name=f"s-_{job2},{e1}",
                         lb=0
                     )
-                self._slack_upperbound[job2, first_idx] = \
+                self._slack_upperbound[job2, e1] = \
                     self._problem.continuous_var(
-                        name=f"s+_{job2},{first_idx}",
+                        name=f"s+_{job2},{e1}",
                         lb=0
                     )
                 self._cost += self._penalty_bounds * \
-                    (self._slack_lowerbound[job2, first_idx] +
-                     self._slack_upperbound[job2, first_idx])
+                    (self._slack_lowerbound[job2, e1] +
+                     self._slack_upperbound[job2, e1])
             # 5. Lower bound
-            self._c_lower[job2, first_idx].lhs += \
-                self._slack_lowerbound[job2, first_idx]
+            self._c_lower[job2, e1].lhs += \
+                self._slack_lowerbound[job2, e1]
             # 6. Upper bound
-            self._c_upper[job2, first_idx].lhs -= \
-                self._slack_upperbound[job2, first_idx]
+            self._c_upper[job2, e1].lhs -= \
+                self._slack_upperbound[job2, e1]
             # In addition, the time variables need to be updated in two
             # more constraints.
-            # No need to check boundary: this always holds
-            assert first_idx + 2 < len(self._event_list)
-            self._c_lower[job2, first_idx + 1].lhs += \
-                self._slack_lowerbound[job2, first_idx + 1]
-            self._c_upper[job2, first_idx + 1].lhs -= \
-                self._slack_upperbound[job2, first_idx + 1]
+            self._c_lower[job2, e2].lhs += \
+                self._slack_lowerbound[job2, e2]
+            self._c_upper[job2, e2].lhs -= \
+                self._slack_upperbound[job2, e2]
         elif type2 == 1:
             # In addition, the time variables need to be updated in two
             # more constraints.
             # No need to check for first_idx > 0: this is always true
             assert first_idx > 0
-            self._c_lower[job2, first_idx - 1].lhs += \
-                self._slack_lowerbound[job2, first_idx - 1]
-            self._c_upper[job2, first_idx - 1].lhs -= \
-                self._slack_upperbound[job2, first_idx - 1]
+            e0 = self._event_list[first_idx - 1, 1] * 2 \
+                + self._event_list[first_idx - 1, 0]
+            self._c_lower[job2, e0].lhs += \
+                self._slack_lowerbound[job2, e0]
+            self._c_upper[job2, e0].lhs -= \
+                self._slack_upperbound[job2, e0]
         else:
             raise ValueError(f"Type code not recognized: {type2}")
 
@@ -860,7 +936,7 @@ class OrderBasedSubProblemWithSlack(OrderBasedSubProblem):
                     lower_slack += l_var.solution_value
 
         return [("resource", resource_slack, self._penalty_capacity),
-                ("upperbound", upper_slack, self._penalty_bounds), 
+                ("upperbound", upper_slack, self._penalty_bounds),
                 ("lowerbound", lower_slack, self._penalty_bounds)]
 
     def print_solution(self):
@@ -880,11 +956,9 @@ class OrderBasedSubProblemWithSlack(OrderBasedSubProblem):
                 if isinstance(l_var, docplex.mp.dvar.Var):
                     slack_str += f'{l_var.name}: {l_var.solution_value}; '
         print(slack_str)
-        
 
 
 class FeasibilityWithoutLowerbound(OrderBasedSubProblem):
-
     """Class implementing an LP that checks instances for feasibility,
     ignoring constraints on the lower bounds.
 
@@ -917,7 +991,6 @@ class FeasibilityWithoutLowerbound(OrderBasedSubProblem):
         self._times = events[:, 2]
         super().__init__(eventlist, jobs, resource, label, solver)
 
-    
     def initialize_problem(self):
         """...
         """
@@ -949,7 +1022,7 @@ class FeasibilityWithoutLowerbound(OrderBasedSubProblem):
                                              len(self._event_list) - 1),
                                       dtype=object)
         self._c_powercapacity = np.zeros(shape=len(self._event_list) - 1,
-                                       dtype=object)
+                                         dtype=object)
 
         for j in range(len(self._job_properties)):
             # 1. Total work
