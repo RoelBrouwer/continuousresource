@@ -400,7 +400,7 @@ class OrderBasedSubProblem(LP):
         e1 = job1 * 2 + type1
         e2 = job2 * 2 + type2
 
-        if job1 == job2 and type1 == 1:
+        if job1 == job2 and type2 == 1:
             raise RuntimeError("Cannot put a job's completion before its"
                                " start.")
 
@@ -424,13 +424,13 @@ class OrderBasedSubProblem(LP):
                     name=f"p_{job1},{e2}",
                     lb=0
                 )
-        if type2 == 0 and not isinstance(self._resource[job2, e2],
+        if type2 == 0 and not isinstance(self._resource[job2, e1],
                                          docplex.mp.dvar.Var):
             # The start of job2 happens one interval earlier, a new
             # variable must be added.
-            self._resource[job2, e2] = \
+            self._resource[job2, e1] = \
                 self._problem.continuous_var(
-                    name=f"p_{job2},{e2}",
+                    name=f"p_{job2},{e1}",
                     lb=0
                 )
 
@@ -599,13 +599,12 @@ class OrderBasedSubProblem(LP):
             # fewer interval (and it is not enforced on the last
             # interval anyway, because it completes at the start of this
             # one).
-            if job1 != job2:
-                self._problem.remove_constraints([
-                    self._c_lower[job2, e1],
-                    self._c_upper[job2, e1]
-                ])
-                self._c_lower[job2, e1] = None
-                self._c_upper[job2, e1] = None
+            self._problem.remove_constraints([
+                self._c_lower[job2, e1],
+                self._c_upper[job2, e1]
+            ])
+            self._c_lower[job2, e1] = None
+            self._c_upper[job2, e1] = None
             # In addition, the time variables need to be updated in two
             # more constraints.
             # No need to check for first_idx > 0: this is always true
@@ -622,6 +621,39 @@ class OrderBasedSubProblem(LP):
                                                  - self._times[e0])
         else:
             raise ValueError(f"Type code not recognized: {type2}")
+
+        # Update bounds for all other jobs that are active
+        for j in range(len(self._job_properties)):
+            if self._event_map[j, 0] < first_idx \
+               and self._event_map[j, 1] > first_idx + 1:
+                e0 = self._event_list[first_idx - 1, 1] * 2 \
+                    + self._event_list[first_idx - 1, 0]
+                e3 = self._event_list[first_idx + 2, 1] * 2 \
+                    + self._event_list[first_idx + 2, 0]
+                self._c_lower[j, e0].lhs = \
+                    self._resource[j, e0] - \
+                    self._job_properties[j, 1] * (self._times[e2]
+                                                  - self._times[e0])
+                self._c_lower[j, e2].lhs = \
+                    self._resource[j, e2] - \
+                    self._job_properties[j, 1] * (self._times[e1]
+                                                  - self._times[e2])
+                self._c_lower[j, e1].lhs = \
+                    self._resource[j, e1] - \
+                    self._job_properties[j, 1] * (self._times[e3]
+                                                  - self._times[e1])
+                self._c_upper[j, e0].lhs = \
+                    self._resource[j, e0] - \
+                    self._job_properties[j, 2] * (self._times[e2]
+                                                  - self._times[e0])
+                self._c_upper[j, e2].lhs = \
+                    self._resource[j, e2] - \
+                    self._job_properties[j, 2] * (self._times[e1]
+                                                  - self._times[e2])
+                self._c_upper[j, e1].lhs = \
+                    self._resource[j, e1] - \
+                    self._job_properties[j, 2] * (self._times[e3]
+                                                  - self._times[e1])
 
         # update appropriate self._c_resource
         for j in [job1, job2]:
