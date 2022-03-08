@@ -488,15 +488,17 @@ class ContinuousResourceMIPPlus(ContinuousResourceMIP):
         super().__init__(instance, label, solver)
         for j in range(self._njobs):
             # A1. Restrict processing time (upper limit) by lower bound
-            self._problem.add_constraint(
-                ct=self._tvar[2 * j + 1] - self._tvar[2 * j]
-                - (instance['jobs'][j, 0] / instance['jobs'][j, 1]) <= 0,
-                ctname=f"Processing_time_upper_limit_job_{j}"
-            )
+            if instance['jobs'][j, 1] > 0:
+                self._problem.add_constraint(
+                    ct=self._tvar[2 * j + 1] - self._tvar[2 * j]
+                    - (instance['jobs'][j, 0] / instance['jobs'][j, 1]) <= 0,
+                    ctname=f"Processing_time_upper_limit_job_{j}"
+                )
 
             # A2. Restrict processing time (lower limit) by upper bound
-            self._problem.add_constraint(
-                ct=self._tvar[2 * j + 1] - self._tvar[2 * j]
-                - (instance['jobs'][j, 0] / instance['jobs'][j, 2]) >= 0,
-                ctname=f"Processing_time_lower_limit_job_{j}"
-            )
+            if instance['jobs'][j, 2] > 0:
+                self._problem.add_constraint(
+                    ct=self._tvar[2 * j + 1] - self._tvar[2 * j]
+                    - (instance['jobs'][j, 0] / instance['jobs'][j, 2]) >= 0,
+                    ctname=f"Processing_time_lower_limit_job_{j}"
+                )
