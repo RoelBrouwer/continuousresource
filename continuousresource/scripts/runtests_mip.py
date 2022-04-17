@@ -6,6 +6,7 @@ import re
 import shutil
 import time
 
+import cplex
 from docplex.mp.utils import DOcplexException
 
 from continuousresource.probleminstances.jobarrayinstance \
@@ -109,6 +110,15 @@ def main(format, path, solver, output_dir, label, verbose):
             partial_label = f"{label}_{instance_name}"
             params = re.match(r'.*n(\d+)r(\d+.\d+)a?([01])?i?(\d+)?',
                               instance_name)
+
+            if solver == 'cplex':
+                with cplex.Cplex() as cpx, \
+                 open(os.path.join(output_dir, instance_name,
+                                   "cplex.log"), "w") as cplexlog:
+                    cpx.set_results_stream(cplexlog)
+                    cpx.set_warning_stream(cplexlog)
+                    cpx.set_error_stream(cplexlog)
+                    cpx.set_log_stream(cplexlog)
 
             t_start = time.perf_counter()
             mip = ContinuousResourceMIPPlus(
