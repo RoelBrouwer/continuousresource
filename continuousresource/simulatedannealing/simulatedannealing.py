@@ -48,7 +48,6 @@ def simulated_annealing(search_space, params=None):
     alfa_period = sanitized_parameters['alfa_period']
     cutoff = sanitized_parameters['cutoff']
     temperature = sanitized_parameters['initial_temperature']
-    stop_crit = 0
     iters = cutoff
 
     # Main loop
@@ -109,7 +108,7 @@ def simulated_annealing_verbose(search_space, params=None, output_dir=None):
         output_dir = os.getcwd()
 
     with open(os.path.join(output_dir,
-                           f"iterations.csv"), "w") as csv:
+                           "iterations.csv"), "w") as csv:
         added_header = ""
         if search_space.current.model.with_slack:
             added_header = ";slack"
@@ -124,7 +123,6 @@ def simulated_annealing_verbose(search_space, params=None, output_dir=None):
         alfa_period = sanitized_parameters['alfa_period']
         cutoff = sanitized_parameters['cutoff']
         temperature = sanitized_parameters['initial_temperature']
-        stop_crit = 0
         iters = cutoff
         start_time = time.perf_counter()
 
@@ -151,7 +149,6 @@ def simulated_annealing_verbose(search_space, params=None, output_dir=None):
                     f'{fails}{slack_string}\n'
                 )
                 break
-                    
 
             # Update temperature for next iteration block
             if i % alfa_period:
@@ -312,8 +309,7 @@ class SearchSpace():
                 fail_count += 1
 
         return fail_count, new_state
-        
-        
+
     def get_neighbor_swap(self):
         """Finds candidate solutions by swapping adjacent event pairs.
 
