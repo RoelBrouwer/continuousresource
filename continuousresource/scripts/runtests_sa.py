@@ -119,12 +119,15 @@ def main(format, path, solver, output_dir, label, verbose):
 
             # TO BE varied:
             slackpenalties = [10, 10]
-            initial_temperature = 30  # 50% acceptence for diff ~20
-            alfa = 0.95
-            # neighborhood size = 2n - 1 for adjacent swap
-            alfa_period = (2 * int(params.group(1)) - 1) * 8
-            cutoff = alfa_period * 50
-            # Cool off to 4.34 for 20; 0.22 for 1 to accept only 1%
+            sp = {
+                'initial_temperature': 30,  # 50% acceptence for diff ~20
+                'alfa': 0.95,
+                # neighborhood size = 2n - 1 for adjacent swap
+                'alfa_period': (2 * int(params.group(1)) - 1) * 8,
+                'cutoff': (2 * int(params.group(1)) - 1) * 8 * 50,
+                # Cool off to 4.34 for 20; 0.22 for 1 to accept only 1%
+                'infer_precedence': False
+            }
 
             t_start = time.perf_counter()
             search_space = SearchSpace()
@@ -137,14 +140,12 @@ def main(format, path, solver, output_dir, label, verbose):
 
             if verbose:
                 iters, solution = simulated_annealing_verbose(
-                    search_space, initial_temperature, alfa, alfa_period,
-                    cutoff=cutoff,
+                    search_space, sp,
                     output_dir=os.path.join(output_dir, instance_name)
                 )
             else:
                 iters, solution = simulated_annealing(
-                    search_space, initial_temperature, alfa, alfa_period,
-                    cutoff=cutoff
+                    search_space, sp
                 )
 
             t_end = time.perf_counter()
@@ -181,8 +182,8 @@ Total time (s): {t_end - t_start}
             # TODO: fix if either a or i is not included in filename
             csv.write(
                 f'{params.group(1)};{params.group(2)};{params.group(3)};'
-                f'{params.group(4)};{initial_temperature};{alfa};'
-                f'{alfa_period};{cutoff};{iters};{sol_init_time};'
+                f'{params.group(4)};{sp["initial_temperature"]};{sp["alfa"]};'
+                f'{sp["alfa_period"]};{sp["cutoff"]};{iters};{sol_init_time};'
                 f'{sol_init_score};{t_end - t_start};{solution.score};'
                 f'{total_slack}\n'
             )

@@ -4,9 +4,11 @@ import numpy as np
 import os
 import time
 
+from continuousresource.simulatedannealing.utils \
+    import sanitize_parameters
 
-def simulated_annealing(search_space, initial_temperature, alfa, alfa_period,
-                        cutoff=100000):
+
+def simulated_annealing(search_space, params=None):
     """Routine performing Simulated Annealing local search.
     The search stops when one of the following three conditions is met:
         - No candidate solution was accepted after trying 200 options in
@@ -20,16 +22,19 @@ def simulated_annealing(search_space, initial_temperature, alfa, alfa_period,
     search_space : SearchSpace
         Search space object that this simulated annealing run will be
         performed on.
-    initial_temperature : float
-        Initial value for the temperature of the annealing process.
-    alfa : float
-        Multiplication factor for updating the temperature.
-    alfa_period : int
-        Number of iterations to go through before updating the
-        temperature.
-    cutoff : int
-        Maximum number of iterations to run the simulated annealing
-        process.
+    params : Dict
+        Dictionary containing parameters for the simulated annealing run,
+        with the following keys:
+            - `initial_temperature` (float): Initial value for the
+              temperature of the annealing process.
+            - `alfa` (float): Multiplication factor for updating the
+              temperature.
+            - `alfa_period` (int): Number of iterations to go through
+              before updating the temperature.
+            - `cutoff` (int): Maximum number of iterations to run the
+              simulated annealing process.
+            - `infer_precedence` (bool): Flag indicating whether to infer
+              and continuously check (implicit) precedence relations.
 
     Returns
     -------
@@ -38,8 +43,11 @@ def simulated_annealing(search_space, initial_temperature, alfa, alfa_period,
     SearchSpaceState
         Best found solution.
     """
-    # Temperature
-    temperature = initial_temperature
+    # Initialization
+    alfa = sanitized_parameters['alfa']
+    alfa_period = sanitized_parameters['alfa_period']
+    cutoff = sanitized_parameters['cutoff']
+    temperature = sanitized_parameters['initial_temperature']
     stop_crit = 0
     iters = cutoff
 
@@ -62,8 +70,7 @@ def simulated_annealing(search_space, initial_temperature, alfa, alfa_period,
     return iters, search_space.best
 
 
-def simulated_annealing_verbose(search_space, initial_temperature, alfa,
-                                alfa_period, cutoff=100000, output_dir=None):
+def simulated_annealing_verbose(search_space, params=None, output_dir=None):
     """Routine performing Simulated Annealing local search.
     The search stops when one of the following three conditions is met:
         - No candidate solution was accepted after trying 200 options in
@@ -77,16 +84,19 @@ def simulated_annealing_verbose(search_space, initial_temperature, alfa,
     search_space : SearchSpace
         Search space object that this simulated annealing run will be
         performed on.
-    initial_temperature : float
-        Initial value for the temperature of the annealing process.
-    alfa : float
-        Multiplication factor for updating the temperature.
-    alfa_period : int
-        Number of iterations to go through before updating the
-        temperature.
-    cutoff : int
-        Maximum number of iterations to run the simulated annealing
-        process.
+    params : Dict
+        Dictionary containing parameters for the simulated annealing run,
+        with the following keys:
+            - `initial_temperature` (float): Initial value for the
+              temperature of the annealing process.
+            - `alfa` (float): Multiplication factor for updating the
+              temperature.
+            - `alfa_period` (int): Number of iterations to go through
+              before updating the temperature.
+            - `cutoff` (int): Maximum number of iterations to run the
+              simulated annealing process.
+            - `infer_precedence` (bool): Flag indicating whether to infer
+              and continuously check (implicit) precedence relations.
     output_dir : string
         Directory to put the verbose progression report.
 
@@ -110,8 +120,11 @@ def simulated_annealing_verbose(search_space, initial_temperature, alfa,
             f'#;time;best_score;curr_score;rejected{added_header}\n'
         )
 
-        # Temperature
-        temperature = initial_temperature
+        # Initialization
+        alfa = sanitized_parameters['alfa']
+        alfa_period = sanitized_parameters['alfa_period']
+        cutoff = sanitized_parameters['cutoff']
+        temperature = sanitized_parameters['initial_temperature']
         stop_crit = 0
         iters = cutoff
         start_time = time.perf_counter()
