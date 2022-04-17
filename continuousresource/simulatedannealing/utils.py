@@ -5,7 +5,7 @@ implementations."""
 import warnings
 
 
-def sanitize_params(params):
+def sanitize_simulated_annealing_params(params):
     """Check parameter dictionary for missing values and substitute
     defaults where appropriate.
 
@@ -79,6 +79,28 @@ def sanitize_params(params):
         )
         sanitized_params['cutoff'] = int(sanitized_params['alfa_period'] * 50)
 
+    return sanitized_params
+
+
+def sanitize_search_space_params(params):
+    """Check parameter dictionary for missing values and substitute
+    defaults where appropriate.
+
+    Parameters
+    ----------
+    params : Dict
+        Dictionary containing parameters defining the search space.
+
+    Returns
+    -------
+    Dict
+        Sanitized dictionary, with the following keys:
+            - `infer_precedence` (bool): Flag indicating whether to infer
+              and continuously check (implicit) precedence relations.
+    """
+    if params is None:
+        params = {}
+    sanitized_params = {}
     # Infer precedence
     if 'infer_precedence' in params:
         sanitized_params['infer_precedence'] = \

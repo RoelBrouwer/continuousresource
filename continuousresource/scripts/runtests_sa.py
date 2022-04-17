@@ -124,13 +124,15 @@ def main(format, path, solver, output_dir, label, verbose):
                 'alfa': 0.95,
                 # neighborhood size = 2n - 1 for adjacent swap
                 'alfa_period': (2 * int(params.group(1)) - 1) * 8,
-                'cutoff': (2 * int(params.group(1)) - 1) * 8 * 50,
+                'cutoff': (2 * int(params.group(1)) - 1) * 8 * 50
                 # Cool off to 4.34 for 20; 0.22 for 1 to accept only 1%
+            }
+            spp = {
                 'infer_precedence': False
             }
 
             t_start = time.perf_counter()
-            search_space = SearchSpace()
+            search_space = SearchSpace(spp)
             sol_init_time, sol_init_score = \
                 search_space.generate_initial_solution(
                     model_class, dummy_eventlist, instance['jobs'],

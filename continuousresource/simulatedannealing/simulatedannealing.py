@@ -5,7 +5,8 @@ import os
 import time
 
 from continuousresource.simulatedannealing.utils \
-    import sanitize_parameters
+    import sanitize_simulated_annealing_parameters, \
+    sanitize_search_space_parameters
 
 
 def simulated_annealing(search_space, params=None):
@@ -33,8 +34,6 @@ def simulated_annealing(search_space, params=None):
               before updating the temperature.
             - `cutoff` (int): Maximum number of iterations to run the
               simulated annealing process.
-            - `infer_precedence` (bool): Flag indicating whether to infer
-              and continuously check (implicit) precedence relations.
 
     Returns
     -------
@@ -44,6 +43,7 @@ def simulated_annealing(search_space, params=None):
         Best found solution.
     """
     # Initialization
+    sanitized_parameters = sanitize_simulated_annealing_parameters(params)
     alfa = sanitized_parameters['alfa']
     alfa_period = sanitized_parameters['alfa_period']
     cutoff = sanitized_parameters['cutoff']
@@ -95,8 +95,6 @@ def simulated_annealing_verbose(search_space, params=None, output_dir=None):
               before updating the temperature.
             - `cutoff` (int): Maximum number of iterations to run the
               simulated annealing process.
-            - `infer_precedence` (bool): Flag indicating whether to infer
-              and continuously check (implicit) precedence relations.
     output_dir : string
         Directory to put the verbose progression report.
 
@@ -121,6 +119,7 @@ def simulated_annealing_verbose(search_space, params=None, output_dir=None):
         )
 
         # Initialization
+        sanitized_parameters = sanitize_simulated_annealing_parameters(params)
         alfa = sanitized_parameters['alfa']
         alfa_period = sanitized_parameters['alfa_period']
         cutoff = sanitized_parameters['cutoff']
@@ -177,8 +176,17 @@ def simulated_annealing_verbose(search_space, params=None, output_dir=None):
 
 class SearchSpace():
     """Wrapper object for information about the search space.
+
+    Parameters
+    ----------
+    params : Dict
+        Dictionary containing parameters defining the search space, with
+        the following keys:
+            - `infer_precedence` (bool): Flag indicating whether to infer
+              and continuously check (implicit) precedence relations.
     """
-    def __init__(self):
+    def __init__(self, params=None):
+        self._params = sanitize_search_space_parameters(params)
         self._current_solution = None
         self._best_solution = None
 
