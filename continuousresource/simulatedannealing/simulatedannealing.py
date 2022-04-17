@@ -202,6 +202,18 @@ class SearchSpace():
     def current(self):
         return self._current_solution
 
+    @property
+    def precedences(self):
+        """Two dimensional (|E| x |E|) array listing (inferred)
+        precedence relations between events. If the entry at position
+        [i, j] is True, this means that i has to come before j.
+        """
+        return self._precedences
+
+    # @precedences.setter
+    # def precedences(self, p)
+    #     self._precedences = p
+
     def generate_initial_solution(self, model_class, eventlist,
                                   *args, **kwargs):
         """Generates an initial solution within the search space and sets
@@ -232,6 +244,8 @@ class SearchSpace():
         # presented.
         initial = SearchSpaceState(self, eventlist)
         initial.create_model(model_class, eventlist, *args, **kwargs)
+        self._precedences = \
+            initial.model.find_precedences(self._params['infer_precedences'])
         t_start = time.perf_counter()
         initial.model.generate_initial_solution()
         t_end = time.perf_counter()

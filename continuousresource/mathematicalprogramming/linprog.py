@@ -716,6 +716,38 @@ class OrderBasedSubProblem(LP):
         print(timings_str)
         print(resource_str)
 
+    def find_precedences(self, infer_precedence):
+        """Construct an array indicating precedence relations between
+        events.
+
+        Parameters
+        ----------
+        infer_precedence : bool
+            Flag indicating whether to infer and continuously check
+            (implicit) precedence relations.
+
+        Returns
+        -------
+        ndarray
+            Two dimensional (|E| x |E|) array listing (inferred)
+            precedence relations between events. If the entry at position
+            [i, j] is True, this means that i has to come before j.
+        """
+        # Start out with an array filled with only the precedence
+        # relations that exist between start/completion events.
+        precs = np.array([
+            [
+                (i % 2 == 0 and j - i == 1)
+                for j in range(len(self._event_list))
+            ]
+            for i in range(len(self._event_list))
+        ], dtype=bool)
+
+        if not infer_precedence:
+            return precs
+
+        # TODO: infer more precedences based on release date, deadline
+
 
 class OrderBasedSubProblemWithSlack(OrderBasedSubProblem):
     """Class implementing the subproblem for a decomposition approach
