@@ -367,9 +367,61 @@ class SearchSpace():
         ?
             ?
         """
-        pass
+        retry = True
+        count = 0
+        orig_idx = 0
+        new_idx = 0
 
-    def get_neighbor_move_revert(self, new_state, data):
+        while retry and count < len(self._current_solution.model.event_list):
+            retry = False
+            orig_idx = np.random.randint(
+                len(self._current_solution.model.event_list)
+            )
+            job = self._current_solution.model.event_list[orig_idx, 1]
+            etype = self._current_solution.model.event_list[orig_idx, 0]
+
+            # Determine closest predecessor with a precedence relation
+            llimit = orig_idx
+            while not (self._precedences[
+                       self._current_solution.model.event_list[llimit, 1] * 2
+                       + self._current_solution.model.event_list[llimit, 0],
+                       job * 2 + etype]):
+                llimit -= 1
+                if llimit == -1:
+                    break
+
+            # Determine closest successor with a precedence relation
+            rlimit = orig_idx
+            while not (self._precedences[job * 2 + etype,
+                       self._current_solution.model.event_list[rlimit, 1] * 2
+                       + self._current_solution.model.event_list[rlimit, 0]]):
+                rlimit += 1
+                if rlimit == len(self._current_solution.model.event_list):
+                    break
+
+            # If the range of possibilities is limited to the current
+            # position, we select another job.
+            if rlimit - llimit == 2:
+                retry = True
+                count += 1
+            else:
+                new_idx = orig_idx
+                while new_idx == orig_idx:
+                    new_idx = np.random.randint(
+                        llimit + 1,
+                        rlimit
+                    )
+
+        new_state = copy.copy(self._current_solution)
+        new_state.model = self._current_solution.model
+        new_state.model.update_move_event(orig_idx, new_idx)
+        new_state.eventorder = copy.copy(
+            self._current_solution.model.event_list
+        )
+        new_state.compute_score()
+        return new_state, (orig_idx, new_idx)
+
+    def get_neighbor_move_revert(self, new_state, idcs):
         """Reverts the model to its previous state.
 
         Parameters
@@ -377,10 +429,11 @@ class SearchSpace():
         new_state : SearchSpaceState
             Reference to the state containing a link to the model that
             should be reverted.
-        ? : ?
-            ?
+        idcs : Tuple
+            Tuple containing the original and new index of the moved
+            event.
         """
-        pass
+        new_state.model.update_move_event(idcs[1], idcs[0])
 
     def get_neighbor_simultaneous(self):
         # Find candidates by looking at the adjacent pairs that were
