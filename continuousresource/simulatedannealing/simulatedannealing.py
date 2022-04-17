@@ -224,6 +224,12 @@ class SearchSpace():
         self._best_solution.slack = initial.slack
         return t_end - t_start, initial.score
 
+    def compute_search_space_reductions(self):
+        """Eliminate parts of the search space by looking at implicit
+        precedence constraints in the data.
+        """
+        pass
+
     def get_neighbor(self, temperature):
         """Template method for finding candidate solutions.
 
@@ -313,6 +319,33 @@ class SearchSpace():
             ID of the first event to be swapped back.
         """
         new_state.model.update_swap_neighbors(swap_id)
+
+    def get_neighbor_move(self):
+        """Finds candidate solutions by moving an event a random number
+        of places in the event order, respecting precomputed precedence
+        constraints.
+
+        Returns
+        -------
+        SearchSpaceState
+            New state for the search to continue with
+        ?
+            ?
+        """
+        pass
+
+    def get_neighbor_move_revert(self, new_state, data):
+        """Reverts the model to its previous state.
+
+        Parameters
+        ----------
+        new_state : SearchSpaceState
+            Reference to the state containing a link to the model that
+            should be reverted.
+        ? : ?
+            ?
+        """
+        pass
 
     def get_neighbor_simultaneous(self):
         # Find candidates by looking at the adjacent pairs that were
