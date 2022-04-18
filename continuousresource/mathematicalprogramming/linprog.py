@@ -666,6 +666,19 @@ class OrderBasedSubProblem(LP):
                 )
             ) - self._job_properties[j, 0]
 
+def update_move_event(self, orig_idx, new_idx):
+        """Update the existing model by moving an event to a different
+        position in the event list.
+
+        Parameters
+        ----------
+        orig_idx : int
+            Original position of the event in the event list.
+        new_idx : int
+            Position that the event will be moved to.
+        """
+
+
     def get_schedule(self):
         """Return the schedule that corresponds to the current solution.
 
