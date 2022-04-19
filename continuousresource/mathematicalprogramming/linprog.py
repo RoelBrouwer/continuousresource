@@ -666,7 +666,7 @@ class OrderBasedSubProblem(LP):
                 )
             ) - self._job_properties[j, 0]
 
-def update_move_event(self, orig_idx, new_idx):
+    def update_move_event(self, orig_idx, new_idx):
         """Update the existing model by moving an event to a different
         position in the event list.
 
@@ -677,7 +677,255 @@ def update_move_event(self, orig_idx, new_idx):
         new_idx : int
             Position that the event will be moved to.
         """
+        # Interface method
+        self.update_move_event_stepwise(orig_idx, new_idx)
 
+    def update_move_event_stepwise(self, orig_idx, new_idx):
+        """Update the existing model by moving an event to a different
+        position in the event list.
+
+        Parameters
+        ----------
+        orig_idx : int
+            Original position of the event in the event list.
+        new_idx : int
+            Position that the event will be moved to.
+        """
+        # Implemented as a sequence of swaps (TODO)
+        pass
+
+    def update_move_event_once(self, orig_idx, new_idx):
+        """Update the existing model by moving an event to a different
+        position in the event list.
+
+        Parameters
+        ----------
+        orig_idx : int
+            Original position of the event in the event list.
+        new_idx : int
+            Position that the event will be moved to.
+        """
+        # We assume precedence constraints have been checked before this
+        # update is performed.
+        job1 = self._event_list[orig_idx, 1]
+        type1 = self._event_list[orig_idx, 0]
+        e1 = job1 * 2 + type1
+
+        if new_idx < orig_idx:
+            # Shift the events to the right
+            self._event_list[new_idx + 1:orig_idx + 1, :] = \
+                self._event_list[new_idx:orig_idx, :]
+            self._event_list[new_idx] = [type1, job1]
+
+            # Update the event_map
+            self._event_map[job1, type1] = new_idx
+            for i in range(new_idx + 1, orig_idx + 1):
+                self._event_map[
+                    self._event_list[i, 1],
+                    self._event_list[i, 0]
+                ] += 1
+        elif new_idx > orig_idx:
+            # Shift the events to the left
+            self._event_list[orig_idx:new_idx, :] = \
+                self._event_list[orig_idx + 1:new_idx + 1, :]
+            self._event_list[new_idx] = [type1, job1]
+
+            # Update the event_map
+            self._event_map[job1, type1] = new_idx
+            for i in range(orig_idx, new_idx):
+                self._event_map[
+                    self._event_list[i, 1],
+                    self._event_list[i, 0]
+                ] += 1
+
+        # update self._resource variables
+        if new_idx < orig_idx and type1 == 0:
+            # The start event happens earlier in the order, new variables
+            # need to be introduced.
+            for i in range(new_idx + 1, orig_idx + 1):
+                e2 = self._event_list[i, 1] * 2 + self._event_list[i, 0]
+                if not isinstance(self._resource[job1, e2],
+                                  docplex.mp.dvar.Var):
+                    self._resource[job1, e2] = \
+                        self._problem.continuous_var(
+                            name=f"p_{job1},{e2}",
+                            lb=0
+                        )
+        elif new_idx > orig_idx and type1 == 1:
+            # The completion event happens later in the order, new
+            # variables need to be introduced.
+            for i in range(orig_idx, new_idx):
+                e2 = self._event_list[i, 1] * 2 + self._event_list[i, 0]
+                if not isinstance(self._resource[job1, e2],
+                                  docplex.mp.dvar.Var):
+                    self._resource[job1, e2] = \
+                        self._problem.continuous_var(
+                            name=f"p_{job1},{e2}",
+                            lb=0
+                        )
+        for i in range(len(self._job_properties)):
+            # The inserted event might enter the execution range of other
+            # jobs, in this case new variables are needed.
+            if self._event_map[i, 0] < new_idx and \
+               self._event_map[i, 1] > new_idx and \
+               not isinstance(self._resource[i, e1],
+                              docplex.mp.dvar.Var):
+                self._resource[i, e1] = \
+                    self._problem.continuous_var(
+                        name=f"p_{i},{e1}",
+                        lb=0
+                    )
+
+        # update appropriate self._c_order and self._c_availability
+        if new_idx < orig_idx:
+            if new_idx > 0:
+                e0 = self._event_list[new_idx - 1, 1] * 2 \
+                    + self._event_list[new_idx - 1, 0]
+                self._c_order[e0].lhs = \
+                    self._times[e0] - self._times[e1]
+                self._c_availability[e0].lhs = \
+                    self._problem.sum(
+                        self._resource[j, e0] for j in range(
+                            len(self._job_properties)
+                        )
+                    ) - self._capacity * (self._times[e1]
+                                          - self._times[e0])
+            e2 = self._event_list[new_idx + 1, 1] * 2 \
+                + self._event_list[new_idx + 1, 0]
+            e3 = self._event_list[orig_idx - 1, 1] * 2 \
+                + self._event_list[orig_idx - 1, 0]
+            if orig_idx < len(self._event_list) - 1:
+                self._c_order[e1].lhs = \
+                    self._times[e1] - self._times[e2]
+                self._c_availability[e1].lhs = \
+                    self._problem.sum(
+                        self._resource[j, e1] for j in range(
+                            len(self._job_properties)
+                        )
+                    ) - self._capacity * (self._times[e2]
+                                          - self._times[e1])
+                e4 = self._event_list[orig_idx + 1, 1] * 2 \
+                    + self._event_list[orig_idx + 1, 0]
+                self._c_order[e3].lhs = \
+                    self._times[e3] - self._times[e4]
+                self._c_availability[e3].lhs = \
+                    self._problem.sum(
+                        self._resource[j, e3] for j in range(
+                            len(self._job_properties)
+                        )
+                    ) - self._capacity * (self._times[e4]
+                                          - self._times[e3])
+            else:
+                self._c_order[e1] = self._problem.add_constraint(
+                    ct=self._times[e1] - self._times[e2] <= 0,
+                    ctname=f"event_order_{e1}"
+                self._c_availability[e1] = self._problem.add_constraint(
+                    ct=self._problem.sum(
+                        self._resource[j, e1] for j in range(
+                            len(self._job_properties)
+                        )
+                    ) - self._capacity * (self._times[e2]
+                                          - self._times[e1]) <= 0,
+                    ctname=f"resource_availability_{e1}"
+                )
+                self._problem.remove_constraints([
+                    self._c_order[e3],
+                    self._c_availability[e3]
+                ])
+                self._c_order[e3] = None
+                self._c_availability[e3] = None
+        elif new_idx > orig_idx:
+            if orig_idx > 0:
+                e0 = self._event_list[orig_idx - 1, 1] * 2 \
+                    + self._event_list[orig_idx - 1, 0]
+                e2 = self._event_list[orig_idx + 1, 1] * 2 \
+                    + self._event_list[orig_idx + 1, 0]
+                self._c_order[e0].lhs = \
+                    self._times[e0] - self._times[e2]
+                self._c_availability[e0].lhs = \
+                    self._problem.sum(
+                        self._resource[j, e0] for j in range(
+                            len(self._job_properties)
+                        )
+                    ) - self._capacity * (self._times[e2]
+                                          - self._times[e0])
+            e3 = self._event_list[new_idx - 1, 1] * 2 \
+                + self._event_list[new_idx - 1, 0]
+            if new_idx < len(self._event_list) - 1:
+                self._c_order[e3].lhs = \
+                    self._times[e3] - self._times[e1]
+                self._c_availability[e3].lhs = \
+                    self._problem.sum(
+                        self._resource[j, e3] for j in range(
+                            len(self._job_properties)
+                        )
+                    ) - self._capacity * (self._times[e1]
+                                          - self._times[e3])
+                e4 = self._event_list[new_idx + 1, 1] * 2 \
+                    + self._event_list[new_idx + 1, 0]
+                self._c_order[e1].lhs = \
+                    self._times[e1] - self._times[e4]
+                self._c_availability[e1].lhs = \
+                    self._problem.sum(
+                        self._resource[j, e1] for j in range(
+                            len(self._job_properties)
+                        )
+                    ) - self._capacity * (self._times[e4]
+                                          - self._times[e1])
+            else:
+                self._c_order[e3] = self._problem.add_constraint(
+                    ct=self._times[e3] - self._times[e1] <= 0,
+                    ctname=f"event_order_{e3}"
+                self._c_availability[e3] = self._problem.add_constraint(
+                    ct=self._problem.sum(
+                        self._resource[j, e3] for j in range(
+                            len(self._job_properties)
+                        )
+                    ) - self._capacity * (self._times[e1]
+                                          - self._times[e3]) <= 0,
+                    ctname=f"resource_availability_{e3}"
+                )
+                self._problem.remove_constraints([
+                    self._c_order[e1],
+                    self._c_availability[e1]
+                ])
+                self._c_order[e1] = None
+                self._c_availability[e1] = None
+        
+        # update appropriate self._c_lower & self._c_upper
+        if new_idx < orig_idx:
+            if type1 == 0:
+                # Add constraints
+                pass
+            elif type1 == 1:
+                # Remove constraints
+                for i in range(new_idx + 1, orig_idx + 1):
+                    e2 = self._event_list[i, 1] * 2 + self._event_list[i, 0]
+                    self._problem.remove_constraints([
+                        self._c_lower[job1, e2],
+                        self._c_upper[job1, e2]
+                    ])
+                    self._c_lower[job1, e2] = None
+                    self._c_upper[job1, e2] = None
+        elif new_idx > orig_idx:
+            if type1 == 0:
+                # Remove constraints
+                for i in range(orig_idx, new_idx):
+                    e2 = self._event_list[i, 1] * 2 + self._event_list[i, 0]
+                    self._problem.remove_constraints([
+                        self._c_lower[job1, e2],
+                        self._c_upper[job1, e2]
+                    ])
+                    self._c_lower[job1, e2] = None
+                    self._c_upper[job1, e2] = None
+            elif type1 == 1:
+                # Add constraints
+                pass
+        for i in range(len(self._job_properties)):
+            # The inserted event might enter or leave the execution range
+            # of other jobs, in this case constraints need to be adapted.
+            pass
+        # TODO: unfinished!
 
     def get_schedule(self):
         """Return the schedule that corresponds to the current solution.
