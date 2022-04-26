@@ -101,6 +101,7 @@ def sanitize_search_space_params(params):
     if params is None:
         params = {}
     sanitized_params = {}
+
     # Infer precedence
     if 'infer_precedence' in params:
         sanitized_params['infer_precedence'] = \
@@ -112,5 +113,24 @@ def sanitize_search_space_params(params):
             RuntimeWarning
         )
         sanitized_params['infer_precedence'] = False
+
+    # Distribution of neighborhoodoperators
+    if 'fracs' in params and \
+       ('swap' and 'move' and 'movepair' in params['fracs']) and \
+       params['fracs']['swap'] + params['fracs']['move'] + \
+       params['fracs']['movepair'] == 1:
+        sanitized_params['fracs'] = \
+            params['fracs']
+    else:
+        warnings.warn(
+            "No valid setting for neighborhood operator distribution was"
+            " detected. Using default: [0.95, 0.025, 0.025].",
+            RuntimeWarning
+        )
+        sanitized_params['fracs'] = {
+            "swap": 0.95,
+            "move": 0.025,
+            "movepair": 0.025
+        }
 
     return sanitized_params

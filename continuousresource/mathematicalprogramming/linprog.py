@@ -691,8 +691,17 @@ class OrderBasedSubProblem(LP):
         new_idx : int
             Position that the event will be moved to.
         """
-        # Implemented as a sequence of swaps (TODO)
-        pass
+        # Implemented as a sequence of swaps
+
+        # Determine direction of movement
+        if orig_idx < new_idx:
+            while orig_idx < new_idx:
+                self.update_swap_neighbors(orig_idx)
+                orig_idx += 1
+        elif orig_idx > new_idx:
+            while orig_idx > new_idx:
+                self.update_swap_neighbors(orig_idx - 1)
+                orig_idx -= 1
 
     def update_move_event_once(self, orig_idx, new_idx):
         """Update the existing model by moving an event to a different
@@ -819,6 +828,7 @@ class OrderBasedSubProblem(LP):
                 self._c_order[e1] = self._problem.add_constraint(
                     ct=self._times[e1] - self._times[e2] <= 0,
                     ctname=f"event_order_{e1}"
+                )
                 self._c_availability[e1] = self._problem.add_constraint(
                     ct=self._problem.sum(
                         self._resource[j, e1] for j in range(
@@ -876,6 +886,7 @@ class OrderBasedSubProblem(LP):
                 self._c_order[e3] = self._problem.add_constraint(
                     ct=self._times[e3] - self._times[e1] <= 0,
                     ctname=f"event_order_{e3}"
+                )
                 self._c_availability[e3] = self._problem.add_constraint(
                     ct=self._problem.sum(
                         self._resource[j, e3] for j in range(
@@ -926,6 +937,245 @@ class OrderBasedSubProblem(LP):
             # of other jobs, in this case constraints need to be adapted.
             pass
         # TODO: unfinished!
+        # TODO: Everything below this line still needs to be revised
+        pass
+
+        # update appropriate self._c_lower & self._c_upper
+        if type1 == 1:
+            # Delayed completion, so bounds need to be enforced for an
+            # additional interval (now completes at the start of
+            # first_index + 1, i.e. has to be enforced during the
+            # preceding interval
+            # 5. Lower bound
+            self._c_lower[job1, e2] = self._problem.add_constraint(
+                ct=self._resource[job1, e2] -
+                self._job_properties[job1, 1] * (self._times[e1]
+                                                 - self._times[e2])
+                >= 0,
+                ctname=f"lower_bound_{job1},{e2}"
+            )
+            # 6. Upper bound
+            self._c_upper[job1, e2] = self._problem.add_constraint(
+                ct=self._resource[job1, e2] -
+                self._job_properties[job1, 2] * (self._times[e1]
+                                                 - self._times[e2])
+                <= 0,
+                ctname=f"upper_bound_{job1},{e2}"
+            )
+            # In addition, the time variables need to be updated in two
+            # more constraints.
+            # No need to check for first_idx > 0: this is always true
+            assert first_idx > 0
+            e0 = self._event_list[first_idx - 1, 1] * 2 \
+                + self._event_list[first_idx - 1, 0]
+            self._c_lower[job1, e0].lhs = \
+                self._resource[job1, e0] - \
+                self._job_properties[job1, 1] * (self._times[e2]
+                                                 - self._times[e0])
+            self._c_upper[job1, e0].lhs = \
+                self._resource[job1, e0] - \
+                self._job_properties[job1, 2] * (self._times[e2]
+                                                 - self._times[e0])
+        elif type1 == 0:
+            # Delayed start, so bounds need to be enforced for one fewer
+            # interval
+            self._problem.remove_constraints([
+                self._c_lower[job1, e2],
+                self._c_upper[job1, e2]
+            ])
+            self._c_lower[job1, e2] = None
+            self._c_upper[job1, e2] = None
+            # In addition, the time variables need to be updated in two
+            # more constraints.
+            if first_idx + 2 < len(self._event_list):
+                e3 = self._event_list[first_idx + 2, 1] * 2 \
+                    + self._event_list[first_idx + 2, 0]
+                self._c_lower[job1, e1].lhs = \
+                    self._resource[job1, e1] - \
+                    self._job_properties[job1, 1] * \
+                    (self._times[e3] - self._times[e1])
+                self._c_upper[job1, e1].lhs = \
+                    self._resource[job1, e1] - \
+                    self._job_properties[job1, 2] * \
+                    (self._times[e3] - self._times[e1])
+        else:
+            raise ValueError(f"Type code not recognized: {type1}")
+
+        if type2 == 0:
+            # Earlier start, so bounds need to be enforced for an
+            # additional interval
+            # No need to check boundary: this always holds
+            assert first_idx + 2 < len(self._event_list)
+            e3 = self._event_list[first_idx + 2, 1] * 2 \
+                + self._event_list[first_idx + 2, 0]
+            # 5. Lower bound
+            self._c_lower[job2, e1] = self._problem.add_constraint(
+                ct=self._resource[job2, e1] -
+                self._job_properties[job2, 1] * (self._times[e3]
+                                                 - self._times[e1])
+                >= 0,
+                ctname=f"lower_bound_{job2},{e1}"
+            )
+            # 6. Upper bound
+            self._c_upper[job2, e1] = self._problem.add_constraint(
+                ct=self._resource[job2, e1] -
+                self._job_properties[job2, 2] * (self._times[e3]
+                                                 - self._times[e1])
+                <= 0,
+                ctname=f"upper_bound_{job2},{e1}"
+            )
+            # In addition, the time variables need to be updated in two
+            # more constraints.
+            self._c_lower[job2, e2].lhs = \
+                self._resource[job2, e2] - \
+                self._job_properties[job2, 1] * \
+                (self._times[e1] - self._times[e2])
+            self._c_upper[job2, e2].lhs = \
+                self._resource[job2, e2] - \
+                self._job_properties[job2, 2] * \
+                (self._times[e1] - self._times[e2])
+        elif type2 == 1:
+            # Earlier completion, so bounds need to be enforced for one
+            # fewer interval (and it is not enforced on the last
+            # interval anyway, because it completes at the start of this
+            # one).
+            self._problem.remove_constraints([
+                self._c_lower[job2, e1],
+                self._c_upper[job2, e1]
+            ])
+            self._c_lower[job2, e1] = None
+            self._c_upper[job2, e1] = None
+            # In addition, the time variables need to be updated in two
+            # more constraints.
+            # No need to check for first_idx > 0: this is always true
+            assert first_idx > 0
+            e0 = self._event_list[first_idx - 1, 1] * 2 \
+                + self._event_list[first_idx - 1, 0]
+            self._c_lower[job2, e0].lhs = \
+                self._resource[job2, e0] - \
+                self._job_properties[job2, 1] * (self._times[e2]
+                                                 - self._times[e0])
+            self._c_upper[job2, e0].lhs = \
+                self._resource[job2, e0] - \
+                self._job_properties[job2, 2] * (self._times[e2]
+                                                 - self._times[e0])
+        else:
+            raise ValueError(f"Type code not recognized: {type2}")
+
+        # Update bounds for all other jobs that are active
+        for j in range(len(self._job_properties)):
+            if self._event_map[j, 0] < first_idx \
+               and self._event_map[j, 1] > first_idx + 1:
+                e0 = self._event_list[first_idx - 1, 1] * 2 \
+                    + self._event_list[first_idx - 1, 0]
+                e3 = self._event_list[first_idx + 2, 1] * 2 \
+                    + self._event_list[first_idx + 2, 0]
+                self._c_lower[j, e0].lhs = \
+                    self._resource[j, e0] - \
+                    self._job_properties[j, 1] * (self._times[e2]
+                                                  - self._times[e0])
+                self._c_lower[j, e2].lhs = \
+                    self._resource[j, e2] - \
+                    self._job_properties[j, 1] * (self._times[e1]
+                                                  - self._times[e2])
+                self._c_lower[j, e1].lhs = \
+                    self._resource[j, e1] - \
+                    self._job_properties[j, 1] * (self._times[e3]
+                                                  - self._times[e1])
+                self._c_upper[j, e0].lhs = \
+                    self._resource[j, e0] - \
+                    self._job_properties[j, 2] * (self._times[e2]
+                                                  - self._times[e0])
+                self._c_upper[j, e2].lhs = \
+                    self._resource[j, e2] - \
+                    self._job_properties[j, 2] * (self._times[e1]
+                                                  - self._times[e2])
+                self._c_upper[j, e1].lhs = \
+                    self._resource[j, e1] - \
+                    self._job_properties[j, 2] * (self._times[e3]
+                                                  - self._times[e1])
+
+        # update appropriate self._c_resource
+        for j in [job1, job2]:
+            self._c_resource[j].lhs = self._problem.sum(
+                self._resource[
+                    j,
+                    self._event_list[i, 1] * 2 + self._event_list[i, 0]
+                ] for i in range(
+                    self._event_map[j, 0], self._event_map[j, 1]
+                )
+            ) - self._job_properties[j, 0]
+
+    def update_move_pair(self, idx1, idx2, offset):
+        """Update the existing model by shifting a pair of events through
+        the event list.
+
+        Parameters
+        ----------
+        idx1 : int
+            Original position of the first event in the event list.
+        idx2 : int
+            Original position of the second event in the event list.
+        offset : int
+            Number that the position of the events will be offset by.
+        """
+        # Interface method
+        self.update_move_pair_stepwise(idx1, idx2, offset)
+
+    def update_move_pair_stepwise(self, idx1, idx2, offset):
+        """Update the existing model by shifting a pair of events through
+        the event list.
+
+        Parameters
+        ----------
+        idx1 : int
+            Original position of the first event in the event list.
+        idx2 : int
+            Original position of the second event in the event list.
+        offset : int
+            Number that the position of the events will be offset by.
+        """
+        # Implemented as two moves
+
+        # We do a sign check to determine the direction of movement.
+        # This makes sure we avoid the situation where we move the first
+        # job over the second and than moving the second over the first,
+        # messing up the offset.
+        if offset == 0:
+            return
+        if idx1 < idx2:
+            if offset < 0:
+                first = idx1
+                second = idx2
+            elif offset > 0:
+                first = idx2
+                second = idx1
+        elif idx1 > idx2:
+            if offset < 0:
+                first = idx2
+                second = idx1
+            elif offset > 0:
+                first = idx1
+                second = idx2
+
+        # Move the events to offset position
+        self.update_move_event(first, first + offset)
+        self.update_move_event(second, second + offset)
+
+    def update_move_pair_once(self, idx1, idx2, offset):
+        """Update the existing model by shifting a pair of events through
+        the event list.
+
+        Parameters
+        ----------
+        idx1 : int
+            Original position of the first event in the event list.
+        idx2 : int
+            Original position of the second event in the event list.
+        offset : int
+            Number that the position of the events will be offset by.
+        """
+        pass
 
     def get_schedule(self):
         """Return the schedule that corresponds to the current solution.

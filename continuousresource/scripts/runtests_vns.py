@@ -13,10 +13,9 @@ from continuousresource.probleminstances.jobarrayinstance \
 from continuousresource.mathematicalprogramming.linprog \
     import OrderBasedSubProblemWithSlack
 from continuousresource.simulatedannealing.simulatedannealing \
-    import simulated_annealing, simulated_annealing_verbose
+    import variable_neighborhood_descent
 from continuousresource.simulatedannealing.searchspace \
-    import SearchSpaceSwap, SearchSpaceMove, SearchSpaceMovePair, \
-    SearchSpaceCombined
+    import SearchSpaceHillClimb
 
 
 @click.command(context_settings=dict(help_option_names=['-h', '--help']))
@@ -80,12 +79,6 @@ def main(format, path, solver, output_dir, label, verbose):
     # Vary parameters here
     slackpenalties = [5, 5]
     sp = {
-        'initial_temperature': 30,  # 50% acceptence for diff ~20
-        'alfa': 0.95,
-        # neighborhood size = 2n - 1 for adjacent swap
-        'alfa_period_func': (lambda n: (2 * n - 1) * 8),
-        'cutoff_func': (lambda n: (2 * n - 1) * 8 * 50)
-        # Cool off to 4.34 for 20; 0.22 for 1 to accept only 1%
     }
     spp = {
         'infer_precedence': False,
@@ -95,15 +88,10 @@ def main(format, path, solver, output_dir, label, verbose):
             "movepair": 0.025
         }
     }
+    search_space = SearchSpaceHillClimb(spp)
     model_class = OrderBasedSubProblemWithSlack
-
-    for sp_class in [SearchSpaceCombined]: # [SearchSpaceSwap, SearchSpaceMove, SearchSpaceMovePair, SearchSpaceCombined]:
-        search_space = sp_class(spp)
-        output_dir2 = os.path.join(output_dir, search_space.name)
-        if not os.path.isdir(output_dir2):
-            os.mkdir(output_dir2)
-        run_on_instances(format, path, solver, output_dir2, label, verbose,
-                         sp, spp, search_space, model_class, slackpenalties)
+    run_on_instances(format, path, solver, output_dir, label, verbose,
+                     sp, spp, search_space, model_class, slackpenalties)
 
 
 def run_on_instances(format, path, solver, output_dir, label, verbose,
@@ -112,7 +100,7 @@ def run_on_instances(format, path, solver, output_dir, label, verbose,
     with open(os.path.join(output_dir,
                            f"{label}_summary.csv"), "w") as csv:
         csv.write(
-            'n;r;a;i;T_init;alfa;alfa_period;stop;#iter;init_time;init_score;'
+            'n;r;a;i;#iter;init_time;init_score;'
             'time;best;slack\n'
         )
         for inst in os.listdir(path):
@@ -149,9 +137,6 @@ def run_on_instances(format, path, solver, output_dir, label, verbose,
                 for e in [0, 1]
             ])
 
-            sp['alfa_period'] = sp['alfa_period_func'](int(params.group(1)))
-            sp['cutoff'] = sp['cutoff_func'](int(params.group(1)))
-
             t_start = time.perf_counter()
             sol_init_time, sol_init_score = \
                 search_space.generate_initial_solution(
@@ -161,12 +146,13 @@ def run_on_instances(format, path, solver, output_dir, label, verbose,
                 )
 
             if verbose:
-                iters, solution = simulated_annealing_verbose(
-                    search_space, sp,
-                    output_dir=os.path.join(output_dir, instance_name)
-                )
+                raise NotImplementedError
+                # iters, solution = variable_neighborhood_descent_verbose(
+                #     search_space, sp,
+                #     output_dir=os.path.join(output_dir, instance_name)
+                # )
             else:
-                iters, solution = simulated_annealing(
+                iters, solution = variable_neighborhood_descent(
                     search_space, sp
                 )
 
@@ -204,8 +190,8 @@ Total time (s): {t_end - t_start}
             # TODO: fix if either a or i is not included in filename
             csv.write(
                 f'{params.group(1)};{params.group(2)};{params.group(3)};'
-                f'{params.group(4)};{sp["initial_temperature"]};{sp["alfa"]};'
-                f'{sp["alfa_period"]};{sp["cutoff"]};{iters};{sol_init_time};'
+                f'{params.group(4)};'
+                f'{iters};{sol_init_time};'
                 f'{sol_init_score};{t_end - t_start};{solution.score};'
                 f'{total_slack}\n'
             )
