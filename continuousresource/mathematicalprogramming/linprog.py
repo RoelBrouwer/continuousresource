@@ -2,6 +2,7 @@ from abc import ABC
 from abc import abstractmethod
 import bisect
 import docplex.mp.model
+import math
 import numpy as np
 
 from continuousresource.mathematicalprogramming.utils \
@@ -261,6 +262,36 @@ class OrderBasedSubProblem(LP):
 
             for j in range(len(remove) - 1, -1, -1):
                 del curr_jobs[remove[j]]
+
+        eventlist = np.array(eventlist, dtype=int)
+        self._event_list = eventlist
+        self._event_map = \
+            self._construct_event_mapping(eventlist,
+                                          len(self._job_properties))
+
+    def generate_random_solution(self, precs):
+        """Generate a random initial solution that respects the
+        precedence constraints in `precs`.
+
+        Parameters
+        ----------
+        precs : ndarray
+            Two dimensional (|E| x |E|) array listing (inferred)
+            precedence relations between events. If the entry at position
+            [i, j] is True, this means that i has to come before j.
+        """
+        # Initialize eventlist
+        eventlist = []
+
+        events = np.random.permutation(len(self._event_list))
+
+        while len(events) > 0:
+            for i in range(len(events)):
+                if np.sum(precs[events, events[i]]) > 0:
+                    continue
+                eventlist.append([events[i] % 2, math.floor(events[i] / 2)])
+                events = np.delete(events, i)
+                break
 
         eventlist = np.array(eventlist, dtype=int)
         self._event_list = eventlist

@@ -97,6 +97,10 @@ def sanitize_search_space_params(params):
         Sanitized dictionary, with the following keys:
             - `infer_precedence` (bool): Flag indicating whether to infer
               and continuously check (implicit) precedence relations.
+            - `fracs` (dict of float): ...
+            - `start_solution` (str): String indicating the method of
+              generating a starting solution. Either "random" or
+              "greedy".
     """
     if params is None:
         params = {}
@@ -132,5 +136,18 @@ def sanitize_search_space_params(params):
             "move": 0.025,
             "movepair": 0.025
         }
+
+    # Starting solution
+    if 'start_solution' in params and \
+       params['start_solution'] in ['greedy', 'random']:
+        sanitized_params['start_solution'] = \
+            params['start_solution']
+    else:
+        warnings.warn(
+            "No valid setting for starting solution detected. Using"
+            " default: greedy",
+            RuntimeWarning
+        )
+        sanitized_params['start_solution'] = "greedy"
 
     return sanitized_params

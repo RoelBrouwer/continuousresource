@@ -87,18 +87,17 @@ def main(format, path, solver, output_dir, label, verbose):
         'cutoff_func': (lambda n: (2 * n - 1) * 8 * 50)
         # Cool off to 4.34 for 20; 0.22 for 1 to accept only 1%
     }
-    spp = {
-        'infer_precedence': False,
-        'fracs': {
-            "swap": 0.95,
-            "move": 0.025,
-            "movepair": 0.025
+    spps = [
+        {
+            'infer_precedence': False,
+            'fracs': {"swap": 0.90, "move": 0.1, "movepair": 0.0},
+            'start_solution': "random"
         }
-    }
+    ]
     model_class = OrderBasedSubProblemWithSlack
 
-    for sp_class in [SearchSpaceCombined]: # [SearchSpaceSwap, SearchSpaceMove, SearchSpaceMovePair, SearchSpaceCombined]:
-        search_space = sp_class(spp)
+    for spp in spps: # [SearchSpaceSwap, SearchSpaceMove, SearchSpaceMovePair, SearchSpaceCombined]:
+        search_space = SearchSpaceCombined(spp)
         output_dir2 = os.path.join(output_dir, search_space.name)
         if not os.path.isdir(output_dir2):
             os.mkdir(output_dir2)

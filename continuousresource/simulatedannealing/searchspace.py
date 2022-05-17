@@ -86,7 +86,10 @@ class SearchSpace():
         self._precedences = \
             initial.model.find_precedences(self._params['infer_precedence'])
         t_start = time.perf_counter()
-        initial.model.generate_initial_solution()
+        if self._params['start_solution'] == "greedy":
+            initial.model.generate_initial_solution()
+        elif self._params['start_solution'] == "random":
+            initial.model.generate_random_solution(self._precedences)
         t_end = time.perf_counter()
         initial.model.initialize_problem()
         initial.eventorder = initial.model.event_list
