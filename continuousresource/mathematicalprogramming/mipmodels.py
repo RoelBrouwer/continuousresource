@@ -482,6 +482,8 @@ class ContinuousResourceMIP(MIP):
                 else:
                     warmstart.add_var_value(self._avar[e1, e2], 0)
 
+        self._problem.add_mip_start(warmstart)
+
     def get_solution_csv(self):
         (event_labels, event_idx, event_timing, resource_consumption) = \
             time_and_resource_vars_to_human_readable_solution_cplex(
