@@ -100,7 +100,8 @@ def main(format, path, solver, output_dir, label, verbose):
             "swap": 0.95,
             "move": 0.025,
             "movepair": 0.025
-        }
+        },
+        'start_solution': "greedy"
     }
     search_space = SearchSpaceSwap(spp)
     model_class = OrderBasedSubProblemWithSlack
@@ -213,9 +214,19 @@ def main(format, path, solver, output_dir, label, verbose):
                     # print(f'{slack_label}: {value} * {weight}')
                     sa_slack += value * weight
 
-            t_vars = solution.model._times
-            p_vars = solution.model._resource
-            event_order = solution.model.event_list
+            # We need to revert the model to its best state, rather than
+            # the last-seen state.
+            best_model = model_class(
+                solution.eventorder, instance['jobs'],
+                instance['constants']['resource_availability'],
+                slackpenalties=slackpenalties, label=f"{partial_label}_best"
+            )
+            best_model.initialize_problem()
+            best_model.solve()
+
+            t_vars = best_model._times
+            p_vars = best_model._resource
+            event_order = best_model.event_list
 
             # Warmstart MIP
             wmip_start = time.perf_counter()
@@ -230,7 +241,7 @@ def main(format, path, solver, output_dir, label, verbose):
 
             wmip_obj = 0.0
             try:
-                wmip_obj = mip.problem.objective_value
+                wmip_obj = wmip.problem.objective_value
 
                 # Print solution to file
                 with open(os.path.join(output_dir, instance_name,
