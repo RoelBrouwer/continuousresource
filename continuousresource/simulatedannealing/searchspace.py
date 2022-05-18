@@ -196,10 +196,20 @@ class SearchSpace():
         """
         new_state.model.update_swap_neighbors(swap_id)
 
-    def get_neighbor_move(self):
+    def get_neighbor_move(self, dist='uniform'):
         """Finds candidate solutions by moving an event a random number
         of places in the event order, respecting precomputed precedence
         constraints.
+
+        Parameters
+        ----------
+        dist : {'uniform', 'linear'}
+            Distribution used to define the probability for a relative
+            displacement to be selected.
+                - 'uniform' selects any displacement with equal
+                  probability.
+                - 'linear' selects a displacement with a probability that
+                  decreases linearly with increasing size.
 
         Returns
         -------
@@ -212,12 +222,13 @@ class SearchSpace():
         count = 0
         orig_idx = 0
         new_idx = 0
+        att_ord = np.random.permutation(
+            np.arange(len(self._current_solution.model.event_list))
+        )
 
         while retry and count < len(self._current_solution.model.event_list):
             retry = False
-            orig_idx = np.random.randint(
-                len(self._current_solution.model.event_list)
-            )
+            orig_idx = att_ord[count]
             job = self._current_solution.model.event_list[orig_idx, 1]
             etype = self._current_solution.model.event_list[orig_idx, 0]
 
@@ -248,10 +259,15 @@ class SearchSpace():
             else:
                 new_idx = orig_idx
                 while new_idx == orig_idx:
-                    new_idx = np.random.randint(
-                        llimit + 1,
-                        rlimit
-                    )
+                    if dist == 'uniform':
+                        new_idx = np.random.randint(
+                            llimit + 1,
+                            rlimit
+                        )
+                    elif dist == 'linear':
+                        new_idx = self._get_idx_linear_displacement(
+                            orig_idx, llimit, rlimit
+                        )
 
         new_state = copy.copy(self._current_solution)
         new_state.model = self._current_solution.model
@@ -261,6 +277,49 @@ class SearchSpace():
         )
         new_state.compute_score()
         return new_state, (orig_idx, new_idx)
+
+    def _get_idx_linear_displacement(self, orig_idx, llimit, rlimit):
+        """Randomly selects a new index based on the provided limits,
+        where the probability of a displacement being selected decreases
+        linearly with increasing size.
+
+        Parameters
+        ----------
+        orig_idx : int
+            Current position of the event.
+        llimit : int
+            Exclusive lower boundary for its new position.
+        rlimit : int
+            Exclusive upper boundary for its new position.
+
+        Returns
+        -------
+        int
+            New position.
+
+        Notes
+        -----
+        TODO The current implementation leaves room for improvement.
+        """
+        displacements = [
+            i
+            for j in (range(orig_idx - llimit - 1, 0, -1),
+                      range(1, rlimit - orig_idx, 1))
+            for i in j
+        ]
+        max_dis = max(displacements[0], displacements[-1])
+        inv_displacements = [max_dis - i + 1 for i in displacements]
+        total = sum(inv_displacements)
+        probabilities = [i / total for i in inv_displacements]
+        selected = np.random.random()
+        cum_prob = probabilities[0]
+        curr_idx = 0
+        while cum_prob < selected:
+            curr_idx += 1
+            cum_prob += probabilities[curr_idx]
+        if curr_idx >= orig_idx - llimit - 1:
+            curr_idx += 1
+        return llimit + curr_idx + 1
 
     def get_neighbor_move_revert(self, new_state, idcs):
         """Reverts the model to its previous state.
@@ -574,6 +633,67 @@ class SearchSpaceMove(SearchSpace):
         return fail_count, new_state
 
 
+class SearchSpaceMoveLinear(SearchSpace):
+    """Search space that only uses the single event move operator, with a
+    linearly decreasing probability on larger displacements.
+
+    Parameters
+    ----------
+    params : Dict
+        Dictionary containing parameters defining the search space, with
+        the following keys:
+            - `infer_precedence` (bool): Flag indicating whether to infer
+              and continuously check (implicit) precedence relations.
+    """
+    def __init__(self, params=None):
+        super().__init__(params=params)
+        self._label = "onlymovesinglelinear"
+
+    def get_neighbor(self, temperature):
+        """Template method for finding candidate solutions.
+
+        Parameters
+        ----------
+        temperature : float
+            Current annealing temperature, used in determining if a
+            candidate with a lower objective should be accepted.
+
+        Returns
+        -------
+        int
+            Number of candidate solutions that were considered, but
+            rejected.
+        SearchSpaceState
+            New state for the search to continue with.
+        """
+        accepted = False
+        fail_count = 0
+
+        while not accepted:
+            # Obtain a new state
+            new_state, revert_info = self.get_neighbor_move(dist='linear')
+            if new_state.score <= self._current_solution.score or \
+               np.random.random() <= math.exp((self._current_solution.score
+                                               - new_state.score)
+                                              / temperature):
+                if new_state.score < self._best_solution.score:
+                    self._best_solution = copy.copy(new_state)
+                    self._best_solution.score = new_state.score
+                    self._best_solution.slack = new_state.slack
+                self._current_solution = new_state
+                accepted = True
+            else:
+                # Change the model back (the same model instance is used
+                # for both the current and candidate solutions).
+                self.get_neighbor_move_revert(new_state, revert_info)
+
+                if fail_count > 200:
+                    return fail_count, None
+                fail_count += 1
+
+        return fail_count, new_state
+
+
 class SearchSpaceMovePair(SearchSpace):
     """Search space that only uses the job-event pair move operator.
 
@@ -773,7 +893,6 @@ class SearchSpaceHillClimb(SearchSpace):
         """
         # Determine order
         att_ord = np.random.permutation(
-            # We cannot try the last one.
             np.arange(len(self._current_solution.model.event_list))
         )
 
