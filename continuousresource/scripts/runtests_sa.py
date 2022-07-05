@@ -1,5 +1,6 @@
 import click
 import datetime
+import json
 import os
 import os.path
 import re
@@ -16,7 +17,7 @@ from continuousresource.simulatedannealing.simulatedannealing \
     import simulated_annealing, simulated_annealing_verbose
 from continuousresource.simulatedannealing.searchspace \
     import SearchSpaceSwap, SearchSpaceMove, SearchSpaceMovePair, \
-    SearchSpaceCombined
+    SearchSpaceCombined, SearchSpaceMoveLinear
 
 
 @click.command(context_settings=dict(help_option_names=['-h', '--help']))
@@ -90,19 +91,32 @@ def main(format, path, solver, output_dir, label, verbose):
     spps = [
         {
             'infer_precedence': False,
-            'fracs': {"swap": 0.90, "move": 0.1, "movepair": 0.0},
+            'fracs': {"swap": 1.00, "move": 0.0, "movepair": 0.0},
             'start_solution': "random"
         }
     ]
     model_class = OrderBasedSubProblemWithSlack
 
-    for spp in spps: # [SearchSpaceSwap, SearchSpaceMove, SearchSpaceMovePair, SearchSpaceCombined]:
-        search_space = SearchSpaceCombined(spp)
+    spp1 = {
+        'infer_precedence': False,
+        'fracs': {"swap": 0.90, "move": 0.1, "movepair": 0.0},
+        'start_solution': "greedy"
+    }
+    for sp_class in [SearchSpaceSwap, SearchSpaceMove, SearchSpaceMovePair, SearchSpaceMoveLinear, SearchSpaceCombined]:
+        search_space = sp_class(spp1)
         output_dir2 = os.path.join(output_dir, search_space.name)
         if not os.path.isdir(output_dir2):
             os.mkdir(output_dir2)
         run_on_instances(format, path, solver, output_dir2, label, verbose,
-                         sp, spp, search_space, model_class, slackpenalties)
+                         sp, spp1, search_space, model_class, slackpenalties)
+
+    # for spp in spps:
+        # search_space = SearchSpaceCombined(spp)
+        # output_dir2 = os.path.join(output_dir, search_space.name)
+        # if not os.path.isdir(output_dir2):
+            # os.mkdir(output_dir2)
+        # run_on_instances(format, path, solver, output_dir2, label, verbose,
+                         # sp, spp, search_space, model_class, slackpenalties)
 
 
 def run_on_instances(format, path, solver, output_dir, label, verbose,
@@ -192,6 +206,18 @@ Start solution (s): {sol_init_time}
 Total time (s): {t_end - t_start}
                     """
                 )
+
+            # Write diagnostics to json files
+            json.dump(
+                search_space.timings, 
+                open(os.path.join(output_dir, instance_name,
+                                  f"{partial_label}_timings.json"), 'w')
+            )
+            json.dump(
+                search_space.operator_data, 
+                open(os.path.join(output_dir, instance_name,
+                                  f"{partial_label}_operator_data.json"), 'w')
+            )
 
             total_slack = 0
             if solution.model.with_slack and len(solution.slack) > 0:

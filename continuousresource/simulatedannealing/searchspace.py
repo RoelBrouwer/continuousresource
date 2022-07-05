@@ -23,6 +23,25 @@ class SearchSpace():
         self._current_solution = None
         self._best_solution = None
         self._label = "superclass"
+        self._timings = {
+            "initial_solution": 0,
+            "model_update": 0,
+            "lp_solve": 0
+        }
+        self._operator_data = {
+            "swap": {
+                "performed": 0,
+                "succeeded": 0
+            },
+            "move": {
+                "performed": 0,
+                "succeeded": 0
+            },
+            "movepair": {
+                "performed": 0,
+                "succeeded": 0
+            },
+        }
 
     @property
     def best(self):
@@ -52,6 +71,20 @@ class SearchSpace():
     # @precedences.setter
     # def precedences(self, p)
     #     self._precedences = p
+
+    @property
+    def timings(self):
+        """Dictionary containing cumulative time spent on several parts
+        of the process.
+        """
+        return self._timings
+
+    @property
+    def operator_data(self):
+        """Dictionary containing data on the neighborhood operators that
+        have been applied.
+        """
+        return self._operator_data
 
     def generate_initial_solution(self, model_class, eventlist,
                                   *args, **kwargs):
@@ -99,6 +132,7 @@ class SearchSpace():
         self._best_solution = copy.copy(initial)
         self._best_solution.score = initial.score
         self._best_solution.slack = initial.slack
+        self._timings["initial_solution"] = t_end - t_start
         return t_end - t_start, initial.score
 
     def compute_search_space_reductions(self):
@@ -124,36 +158,7 @@ class SearchSpace():
         SearchSpaceState
             New state for the search to continue with.
         """
-        # TODO: Currently only implements the swap-neighborhood operator.
-        accepted = False
-        fail_count = 0
-
-        while not accepted:
-            # Obtain a new state
-            new_state, revert_info = self.get_neighbor_swap()
-            if new_state.score <= self._current_solution.score or \
-               np.random.random() <= math.exp((self._current_solution.score
-                                               - new_state.score)
-                                              / temperature):
-                # print(f"accepted score: {new_state.score}")
-                if new_state.score < self._best_solution.score:
-                    # print(f"best score: {new_state.score}")
-                    self._best_solution = copy.copy(new_state)
-                    self._best_solution.score = new_state.score
-                    self._best_solution.slack = new_state.slack
-                    # new_state.model.print_solution()
-                self._current_solution = new_state
-                accepted = True
-            else:
-                # Change the model back (the same model instance is used
-                # for both the current and candidate solutions).
-                self.get_neighbor_swap_revert(new_state, revert_info)
-
-                if fail_count > 200:
-                    return fail_count, None
-                fail_count += 1
-
-        return fail_count, new_state
+        raise NotImplementedError
 
     def get_neighbor_swap(self):
         """Finds candidate solutions by swapping adjacent event pairs.
@@ -165,6 +170,8 @@ class SearchSpace():
         int
             ID of the first swapped event
         """
+        self._operator_data["swap"]["performed"] += 1
+        self._operator_data["swap"]["succeeded"] += 1
         swap_id = np.random.randint(
             len(self._current_solution.model.event_list) - 1
         )
@@ -176,7 +183,10 @@ class SearchSpace():
 
         new_state = copy.copy(self._current_solution)
         new_state.model = self._current_solution.model
+        t_start = time.perf_counter()
         new_state.model.update_swap_neighbors(swap_id)
+        t_end = time.perf_counter()
+        self._timings["model_update"] += t_end - t_start
         new_state.eventorder = copy.copy(
             self._current_solution.model.event_list
         )
@@ -194,7 +204,11 @@ class SearchSpace():
         swap_id : int
             ID of the first event to be swapped back.
         """
+        self._operator_data["swap"]["succeeded"] -= 1
+        t_start = time.perf_counter()
         new_state.model.update_swap_neighbors(swap_id)
+        t_end = time.perf_counter()
+        self._timings["model_update"] += t_end - t_start
 
     def get_neighbor_move(self, dist='uniform'):
         """Finds candidate solutions by moving an event a random number
@@ -218,6 +232,8 @@ class SearchSpace():
         ?
             ?
         """
+        self._operator_data["move"]["performed"] += 1
+        self._operator_data["move"]["succeeded"] += 1
         retry = True
         count = 0
         orig_idx = 0
@@ -271,7 +287,10 @@ class SearchSpace():
 
         new_state = copy.copy(self._current_solution)
         new_state.model = self._current_solution.model
+        t_start = time.perf_counter()
         new_state.model.update_move_event(orig_idx, new_idx)
+        t_end = time.perf_counter()
+        self._timings["model_update"] += t_end - t_start
         new_state.eventorder = copy.copy(
             self._current_solution.model.event_list
         )
@@ -333,7 +352,11 @@ class SearchSpace():
             Tuple containing the original and new index of the moved
             event.
         """
+        self._operator_data["move"]["succeeded"] -= 1
+        t_start = time.perf_counter()
         new_state.model.update_move_event(idcs[1], idcs[0])
+        t_end = time.perf_counter()
+        self._timings["model_update"] += t_end - t_start
 
     def get_neighbor_move_pair(self):
         """Finds candidate solutions by moving two events, belonging to
@@ -347,6 +370,8 @@ class SearchSpace():
         ?
             ?
         """
+        self._operator_data["movepair"]["performed"] += 1
+        self._operator_data["movepair"]["succeeded"] += 1
         # TODO
         retry = True
         count = 0
@@ -416,7 +441,10 @@ class SearchSpace():
 
         new_state = copy.copy(self._current_solution)
         new_state.model = self._current_solution.model
+        t_start = time.perf_counter()
         new_state.model.update_move_pair(idx1, idx2, offset)
+        t_end = time.perf_counter()
+        self._timings["model_update"] += t_end - t_start
         new_state.eventorder = copy.copy(
             self._current_solution.model.event_list
         )
@@ -435,12 +463,17 @@ class SearchSpace():
             Tuple containing the original indices of the moved events and
             the offset used to determine their new positions.
         """
+        self._operator_data["movepair"]["succeeded"] -= 1
+        t_start = time.perf_counter()
         new_state.model.update_move_pair(idcs[0] + idcs[2], idcs[1] + idcs[2],
                                          -1 * idcs[2])
+        t_end = time.perf_counter()
+        self._timings["model_update"] += t_end - t_start
 
     def get_neighbor_simultaneous(self):
         # Find candidates by looking at the adjacent pairs that were
         # scheduled simultaneously.
+        raise NotImplementedError
         sched = self._current_solution.model.get_schedule()
         pairs = np.array([
             i for i in (range(len(sched - 1)))
@@ -957,11 +990,15 @@ class SearchSpaceHillClimb(SearchSpace):
         ?
             ?
         """
+        # TODO: DOES NOT WORK, fix indices (etype1 etc)
         # Determine order
         att_ord = np.random.permutation(
             # We cannot try the last one.
             np.arange(len(self._current_solution.model.job_properties))
         )
+
+        new_state = copy.copy(self._current_solution)
+        new_state.model = self._current_solution.model
 
         for job_idx in att_ord:
             idx1 = self._current_solution.model.event_map[job_idx, 0]
@@ -972,7 +1009,7 @@ class SearchSpaceHillClimb(SearchSpace):
             while not (self._precedences[
                        self._current_solution.model.event_list[llimit1, 1] * 2
                        + self._current_solution.model.event_list[llimit1, 0],
-                       job * 2 + etype1]):
+                       job_idx * 2 + etype1]):
                 llimit1 -= 1
                 if llimit1 == -1:
                     break
@@ -980,14 +1017,14 @@ class SearchSpaceHillClimb(SearchSpace):
             while not (self._precedences[
                        self._current_solution.model.event_list[llimit2, 1] * 2
                        + self._current_solution.model.event_list[llimit2, 0],
-                       job * 2 + 1 - etype1]):
+                       job_idx * 2 + 1 - etype1]):
                 llimit2 -= 1
                 if llimit2 == -1:
                     break
 
             # Determine closest successor with a precedence relation
             rlimit1 = idx1
-            while not (self._precedences[job * 2 + etype1,
+            while not (self._precedences[job_idx * 2 + etype1,
                        self._current_solution.model.event_list[rlimit1, 1] * 2
                        + self._current_solution.model.event_list[rlimit1,
                                                                  0]]):
@@ -995,7 +1032,7 @@ class SearchSpaceHillClimb(SearchSpace):
                 if rlimit1 == len(self._current_solution.model.event_list):
                     break
             rlimit2 = idx2
-            while not (self._precedences[job * 2 + 1 - etype1,
+            while not (self._precedences[job_idx * 2 + 1 - etype1,
                        self._current_solution.model.event_list[rlimit2, 1] * 2
                        + self._current_solution.model.event_list[rlimit2,
                                                                  0]]):
@@ -1128,7 +1165,10 @@ class SearchSpaceState():
         if self._lp_model is None:
             raise RuntimeError("A score can only be computed if a model has"
                                " been specified for this state.")
+        t_start = time.perf_counter()
         sol = self._lp_model.solve()
+        t_end = time.perf_counter()
+        self._searchspace.timings["lp_solve"] += t_end - t_start
         if sol is not None:
             self._score = sol.get_objective_value()
             self._schedule = self._lp_model.get_schedule()
