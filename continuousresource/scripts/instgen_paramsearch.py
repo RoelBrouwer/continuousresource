@@ -70,7 +70,7 @@ def main(exportpath, label):
                                 f'{a_ml}-{a_mu}-{a_rs}-{a_ps}-{i}'
                             )
                             lp.initialize_problem()
-                            if lp.solve() is not None:
+                            if lp.solve(threads=0) is not None:
                                 succ += 1
 
                         csv.write(
