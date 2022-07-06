@@ -42,14 +42,26 @@ class LP(ABC):
         return self._solver
 
     @property
-    def with_slack(self):
+    def with_slack(self, threads=1):
         return self._with_slack
 
     def solve(self):
-        """Solve the LP."""
+        """Solve the LP.
+
+        Parameters
+        ----------
+        threads : int
+            Optional value indicating the number of threats that the
+            solver is allowed to use. Any value below 1 is considered to
+            mean no limit is imposed, any positive value will be passed
+            as an upper bound on the number of global threads to the
+            solver."""
         # self._problem.export_as_lp(os.getcwd())
         if self._solver == 'cplex':
             # print(self._problem.lp_string)
+            if threads < 1:
+                threads = 0
+            self._problem.context.cplex_parameters.threads = threads
             return self._problem.solve()  # log_output=True)
             # self._problem.print_solution()
         else:

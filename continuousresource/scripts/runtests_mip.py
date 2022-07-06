@@ -111,23 +111,17 @@ def main(format, path, solver, output_dir, label, verbose):
             params = re.match(r'.*n(\d+)r(\d+.\d+)a?([01])?i?(\d+)?',
                               instance_name)
 
-            if solver == 'cplex':
-                with cplex.Cplex() as cpx, \
-                 open(os.path.join(output_dir, instance_name,
+            with open(os.path.join(output_dir, instance_name,
                                    "cplex.log"), "w") as cplexlog:
-                    cpx.set_results_stream(cplexlog)
-                    cpx.set_warning_stream(cplexlog)
-                    cpx.set_error_stream(cplexlog)
-                    cpx.set_log_stream(cplexlog)
-
-            t_start = time.perf_counter()
-            mip = ContinuousResourceMIPPlus(
-                instance,
-                f"{partial_label}_cont_mip",
-                solver
-            )
-            mip.solve(timelimit)
-            t_end = time.perf_counter()
+                t_start = time.perf_counter()
+                mip = ContinuousResourceMIPPlus(
+                    instance,
+                    f"{partial_label}_cont_mip",
+                    solver
+                )
+                mip._problem.context.solver.log_output = cplexlog
+                mip.solve(timelimit)
+                t_end = time.perf_counter()
 
             obj = 0.0
             try:

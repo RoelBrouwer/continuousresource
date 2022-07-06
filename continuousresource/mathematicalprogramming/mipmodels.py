@@ -41,7 +41,7 @@ class MIP(ABC):
     def solver(self):
         return self._solver
 
-    def solve(self, timelimit=None):
+    def solve(self, timelimit=None, threads=1):
         """Solve the LP.
 
         Parameters
@@ -49,9 +49,18 @@ class MIP(ABC):
         timelimit : int
             Optional value indicating the timelimit set on solving the
             problem. By default, no timelimit is enforced.
+        threads : int
+            Optional value indicating the number of threats that the
+            solver is allowed to use. Any value below 1 is considered to
+            mean no limit is imposed, any positive value will be passed
+            as an upper bound on the number of global threads to the
+            solver.
         """
         if self._solver == 'cplex':
             self._problem.set_time_limit(timelimit)
+            if threads < 1:
+                threads = 0
+            self._problem.context.cplex_parameters.threads = threads
             return self._problem.solve()
         else:
             raise NotImplementedError
