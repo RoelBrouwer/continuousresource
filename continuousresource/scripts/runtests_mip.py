@@ -76,7 +76,7 @@ from continuousresource.mathematicalprogramming.mipmodels \
 )
 def main(format, path, solver, output_dir, label, verbose):
     # TODO: document
-    timelimit = 600
+    timelimit = 3600
 
     with open(os.path.join(output_dir,
                            f"{label}_summary.csv"), "w") as csv:
