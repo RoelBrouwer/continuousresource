@@ -45,7 +45,7 @@ class LP(ABC):
     def with_slack(self, threads=1):
         return self._with_slack
 
-    def solve(self):
+    def solve(self, threads=1):
         """Solve the LP.
 
         Parameters
