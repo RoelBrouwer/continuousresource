@@ -1287,20 +1287,41 @@ class OrderBasedSubProblem(LP):
             precedence relations between events. If the entry at position
             [i, j] is True, this means that i has to come before j.
         """
-        # Start out with an array filled with only the precedence
-        # relations that exist between start/completion events.
-        precs = np.array([
+        if not infer_precedence:
+            # Start out with an array filled with only the precedence
+            # relations that exist between start/completion events.
+            return np.array([
+                [
+                    (i % 2 == 0 and j - i == 1)
+                    for j in range(len(self._event_list))
+                ]
+                for i in range(len(self._event_list))
+            ], dtype=bool)
+
+        # For all events we can infer an earliest and latest time
+        inferred_limits = np.array([
+            e
+            for j in range(len(self._job_properties))
+            for e in (
+                [self._job_properties[j, 3],
+                 self._job_properties[j, 4] - (self._job_properties[j, 0] /
+                 self._job_properties[j, 2])],
+                [self._job_properties[j, 3] + (self._job_properties[j, 0] /
+                 self._job_properties[j, 2]),
+                 self._job_properties[j, 4]]
+            )
+        ], dtype=float)
+
+        # Now, any event whose latest possible time is smaller than the
+        # earliest possible time of another event, has to come before it.
+        return np.array([
             [
-                (i % 2 == 0 and j - i == 1)
+                (i % 2 == 0 and j - i == 1) or (inferred_limits[i, 1] <=
+                                                inferred_limits[j, 0])
                 for j in range(len(self._event_list))
             ]
             for i in range(len(self._event_list))
         ], dtype=bool)
-
-        if not infer_precedence:
-            return precs
-
-        # TODO: infer more precedences based on release date, deadline
 
 
 class OrderBasedSubProblemWithSlack(OrderBasedSubProblem):
