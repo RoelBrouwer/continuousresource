@@ -160,7 +160,7 @@ class SearchSpace():
         """
         raise NotImplementedError
 
-    def get_neighbor_swap(self):
+    def get_neighbor_swap(self, swap_id=None):
         """Finds candidate solutions by swapping adjacent event pairs.
 
         Returns
@@ -172,14 +172,20 @@ class SearchSpace():
         """
         self._operator_data["swap"]["performed"] += 1
         self._operator_data["swap"]["succeeded"] += 1
-        swap_id = np.random.randint(
-            len(self._current_solution.model.event_list) - 1
-        )
-        while (self._current_solution.model.event_list[swap_id, 1] ==
-               self._current_solution.model.event_list[swap_id + 1, 1]):
+
+        if swap_id is None:
             swap_id = np.random.randint(
                 len(self._current_solution.model.event_list) - 1
             )
+            while (self._current_solution.model.event_list[swap_id, 1] ==
+                   self._current_solution.model.event_list[swap_id + 1, 1]):
+                swap_id = np.random.randint(
+                    len(self._current_solution.model.event_list) - 1
+                )
+        else:
+            if self._current_solution.model.event_list[swap_id, 1] == \
+               self._current_solution.model.event_list[swap_id + 1, 1]:
+                return None, swap_id
 
         new_state = copy.copy(self._current_solution)
         new_state.model = self._current_solution.model
@@ -210,7 +216,7 @@ class SearchSpace():
         t_end = time.perf_counter()
         self._timings["model_update"] += t_end - t_start
 
-    def get_neighbor_move(self, dist='uniform'):
+    def get_neighbor_move(self, orig_idx=None, dist='uniform'):
         """Finds candidate solutions by moving an event a random number
         of places in the event order, respecting precomputed precedence
         constraints.
@@ -234,56 +240,50 @@ class SearchSpace():
         """
         self._operator_data["move"]["performed"] += 1
         self._operator_data["move"]["succeeded"] += 1
-        retry = True
-        count = 0
-        orig_idx = 0
+        if orig_idx is None:
+            orig_idx = np.random.randint(
+                len(self._current_solution.model.event_list)
+            )
         new_idx = 0
-        att_ord = np.random.permutation(
-            np.arange(len(self._current_solution.model.event_list))
-        )
 
-        while retry and count < len(self._current_solution.model.event_list):
-            retry = False
-            orig_idx = att_ord[count]
-            job = self._current_solution.model.event_list[orig_idx, 1]
-            etype = self._current_solution.model.event_list[orig_idx, 0]
+        job = self._current_solution.model.event_list[orig_idx, 1]
+        etype = self._current_solution.model.event_list[orig_idx, 0]
 
-            # Determine closest predecessor with a precedence relation
-            llimit = orig_idx
-            while not (self._precedences[
-                       self._current_solution.model.event_list[llimit, 1] * 2
-                       + self._current_solution.model.event_list[llimit, 0],
-                       job * 2 + etype]):
-                llimit -= 1
-                if llimit == -1:
-                    break
+        # Determine closest predecessor with a precedence relation
+        llimit = orig_idx
+        while not (self._precedences[
+                   self._current_solution.model.event_list[llimit, 1] * 2
+                   + self._current_solution.model.event_list[llimit, 0],
+                   job * 2 + etype]):
+            llimit -= 1
+            if llimit == -1:
+                break
 
-            # Determine closest successor with a precedence relation
-            rlimit = orig_idx
-            while not (self._precedences[job * 2 + etype,
-                       self._current_solution.model.event_list[rlimit, 1] * 2
-                       + self._current_solution.model.event_list[rlimit, 0]]):
-                rlimit += 1
-                if rlimit == len(self._current_solution.model.event_list):
-                    break
+        # Determine closest successor with a precedence relation
+        rlimit = orig_idx
+        while not (self._precedences[job * 2 + etype,
+                   self._current_solution.model.event_list[rlimit, 1] * 2
+                   + self._current_solution.model.event_list[rlimit, 0]]):
+            rlimit += 1
+            if rlimit == len(self._current_solution.model.event_list):
+                break
 
-            # If the range of possibilities is limited to the current
-            # position, we select another job.
-            if rlimit - llimit == 2:
-                retry = True
-                count += 1
-            else:
-                new_idx = orig_idx
-                while new_idx == orig_idx:
-                    if dist == 'uniform':
-                        new_idx = np.random.randint(
-                            llimit + 1,
-                            rlimit
-                        )
-                    elif dist == 'linear':
-                        new_idx = self._get_idx_linear_displacement(
-                            orig_idx, llimit, rlimit
-                        )
+        # If the range of possibilities is limited to the current
+        # position, we select another job.
+        if rlimit - llimit == 2:
+            return None, (orig_idx, orig_idx)
+        else:
+            new_idx = orig_idx
+            while new_idx == orig_idx:
+                if dist == 'uniform':
+                    new_idx = np.random.randint(
+                        llimit + 1,
+                        rlimit
+                    )
+                elif dist == 'linear':
+                    new_idx = self._get_idx_linear_displacement(
+                        orig_idx, llimit, rlimit
+                    )
 
         new_state = copy.copy(self._current_solution)
         new_state.model = self._current_solution.model
@@ -358,7 +358,7 @@ class SearchSpace():
         t_end = time.perf_counter()
         self._timings["model_update"] += t_end - t_start
 
-    def get_neighbor_move_pair(self):
+    def get_neighbor_move_pair(self, job=None):
         """Finds candidate solutions by moving two events, belonging to
         the same job, a random number of places in the event order,
         respecting precomputed precedence constraints.
@@ -373,71 +373,64 @@ class SearchSpace():
         self._operator_data["movepair"]["performed"] += 1
         self._operator_data["movepair"]["succeeded"] += 1
         # TODO
-        retry = True
-        count = 0
-        idx1 = 0
-        idx2 = 0
+        if job is None:
+            job = np.random.randint(
+                len(self._current_solution.model.job_properties)
+            )
         offset = 0
 
-        while retry and count < len(self._current_solution.model.event_list):
-            retry = False
-            idx1 = np.random.randint(
-                len(self._current_solution.model.event_list)
-            )
-            job = self._current_solution.model.event_list[idx1, 1]
-            etype1 = self._current_solution.model.event_list[idx1, 0]
-            idx2 = self._current_solution.model.event_map[job, 1 - etype1]
+        idx1 = self._current_solution.model.event_map[job, 0]
+        idx2 = self._current_solution.model.event_map[job, 1]
 
-            # Determine closest predecessor with a precedence relation
-            llimit1 = idx1
-            while not (self._precedences[
-                       self._current_solution.model.event_list[llimit1, 1] * 2
-                       + self._current_solution.model.event_list[llimit1, 0],
-                       job * 2 + etype1]):
-                llimit1 -= 1
-                if llimit1 == -1:
-                    break
-            llimit2 = idx2
-            while not (self._precedences[
-                       self._current_solution.model.event_list[llimit2, 1] * 2
-                       + self._current_solution.model.event_list[llimit2, 0],
-                       job * 2 + 1 - etype1]):
-                llimit2 -= 1
-                if llimit2 == -1:
-                    break
+        # Determine closest predecessor with a precedence relation
+        llimit1 = idx1
+        while not (self._precedences[
+                   self._current_solution.model.event_list[llimit1, 1] * 2
+                   + self._current_solution.model.event_list[llimit1, 0],
+                   job * 2]):
+            llimit1 -= 1
+            if llimit1 == -1:
+                break
+        llimit2 = idx2
+        while not (self._precedences[
+                   self._current_solution.model.event_list[llimit2, 1] * 2
+                   + self._current_solution.model.event_list[llimit2, 0],
+                   job * 2 + 1]):
+            llimit2 -= 1
+            if llimit2 == -1:
+                break
 
-            # Determine closest successor with a precedence relation
-            rlimit1 = idx1
-            while not (self._precedences[job * 2 + etype1,
-                       self._current_solution.model.event_list[rlimit1, 1] * 2
-                       + self._current_solution.model.event_list[rlimit1,
-                                                                 0]]):
-                rlimit1 += 1
-                if rlimit1 == len(self._current_solution.model.event_list):
-                    break
-            rlimit2 = idx2
-            while not (self._precedences[job * 2 + 1 - etype1,
-                       self._current_solution.model.event_list[rlimit2, 1] * 2
-                       + self._current_solution.model.event_list[rlimit2,
-                                                                 0]]):
-                rlimit2 += 1
-                if rlimit2 == len(self._current_solution.model.event_list):
-                    break
+        # Determine closest successor with a precedence relation
+        rlimit1 = idx1
+        while not (self._precedences[job * 2,
+                   self._current_solution.model.event_list[rlimit1, 1] * 2
+                   + self._current_solution.model.event_list[rlimit1,
+                                                             0]]):
+            rlimit1 += 1
+            if rlimit1 == len(self._current_solution.model.event_list):
+                break
+        rlimit2 = idx2
+        while not (self._precedences[job * 2 + 1,
+                   self._current_solution.model.event_list[rlimit2, 1] * 2
+                   + self._current_solution.model.event_list[rlimit2,
+                                                             0]]):
+            rlimit2 += 1
+            if rlimit2 == len(self._current_solution.model.event_list):
+                break
 
-            llimit = max(llimit1 - idx1, llimit2 - idx2)
-            rlimit = min(rlimit1 - idx1, rlimit2 - idx2)
+        llimit = max(llimit1 - idx1, llimit2 - idx2)
+        rlimit = min(rlimit1 - idx1, rlimit2 - idx2)
 
-            # If the range of possibilities is limited to the current
-            # position, we select another job.
-            if rlimit - llimit == 2:
-                retry = True
-                count += 1
-            else:
-                while offset == 0:
-                    offset = np.random.randint(
-                        llimit + 1,
-                        rlimit
-                    )
+        # If the range of possibilities is limited to the current
+        # position, we select another job.
+        if rlimit - llimit == 2:
+            return None, (idx1, idx2, 0)
+        else:
+            while offset == 0:
+                offset = np.random.randint(
+                    llimit + 1,
+                    rlimit
+                )
 
         new_state = copy.copy(self._current_solution)
         new_state.model = self._current_solution.model
@@ -469,35 +462,6 @@ class SearchSpace():
                                          -1 * idcs[2])
         t_end = time.perf_counter()
         self._timings["model_update"] += t_end - t_start
-
-    def get_neighbor_simultaneous(self):
-        # Find candidates by looking at the adjacent pairs that were
-        # scheduled simultaneously.
-        raise NotImplementedError
-        sched = self._current_solution.model.get_schedule()
-        pairs = np.array([
-            i for i in (range(len(sched - 1)))
-            if np.isclose(sched[i], sched[i + 1])
-        ])
-
-        if len(pairs) < 1:
-            raise NotImplementedError("Neighbors can only be obtained by"
-                                      " swapping simultaneous events")
-        else:
-            # Consider pairs in random order
-            np.random.shuffle(pairs)
-            for first_idx in pairs:
-                new_state = copy.copy(self._current_solution)
-                new_state.model = self._current_solution.model
-                new_state.model.update_swap_neighbors(first_idx)
-                new_state.compute_score()
-                if new_state.score < self._best_solution.score:
-                    self._best_solution = copy.copy(new_state)
-                    self._best_solution.score = new_state.score
-                    self._best_solution.slack = new_state.slack
-                    # new_state.model.print_solution()
-                # if new_state.score > -1:
-                return new_state
 
     def random_walk(self, no_swaps=100):
         """Performs a random walk from the current solution by swapping
@@ -578,12 +542,19 @@ class SearchSpaceSwap(SearchSpace):
         SearchSpaceState
             New state for the search to continue with.
         """
-        accepted = False
+        # Determine order
+        att_ord = np.random.permutation(
+            # We cannot try the last one.
+            np.arange(len(self._current_solution.model.event_list) - 1)
+        )
         fail_count = 0
 
-        while not accepted:
+        for idx in att_ord:
             # Obtain a new state
-            new_state, revert_info = self.get_neighbor_swap()
+            new_state, revert_info = self.get_neighbor_swap(swap_id=idx)
+            if new_state is None:
+                continue
+                fail_count += 1
             if new_state.score <= self._current_solution.score or \
                np.random.random() <= math.exp((self._current_solution.score
                                                - new_state.score)
@@ -593,15 +564,13 @@ class SearchSpaceSwap(SearchSpace):
                     self._best_solution.score = new_state.score
                     self._best_solution.slack = new_state.slack
                 self._current_solution = new_state
-                accepted = True
+                break
             else:
                 # Change the model back (the same model instance is used
                 # for both the current and candidate solutions).
                 self.get_neighbor_swap_revert(new_state, revert_info)
-
-                if fail_count > 200:
-                    return fail_count, None
                 fail_count += 1
+                new_state = None
 
         return fail_count, new_state
 
@@ -638,12 +607,18 @@ class SearchSpaceMove(SearchSpace):
         SearchSpaceState
             New state for the search to continue with.
         """
-        accepted = False
+        # Determine order
+        att_ord = np.random.permutation(
+            np.arange(len(self._current_solution.model.event_list))
+        )
         fail_count = 0
 
-        while not accepted:
+        for idx in att_ord:
             # Obtain a new state
-            new_state, revert_info = self.get_neighbor_move()
+            new_state, revert_info = self.get_neighbor_move(orig_idx=idx)
+            if new_state is None:
+                continue
+                fail_count += 1
             if new_state.score <= self._current_solution.score or \
                np.random.random() <= math.exp((self._current_solution.score
                                                - new_state.score)
@@ -653,15 +628,13 @@ class SearchSpaceMove(SearchSpace):
                     self._best_solution.score = new_state.score
                     self._best_solution.slack = new_state.slack
                 self._current_solution = new_state
-                accepted = True
+                break
             else:
                 # Change the model back (the same model instance is used
                 # for both the current and candidate solutions).
                 self.get_neighbor_move_revert(new_state, revert_info)
-
-                if fail_count > 200:
-                    return fail_count, None
                 fail_count += 1
+                new_state = None
 
         return fail_count, new_state
 
@@ -699,12 +672,19 @@ class SearchSpaceMoveLinear(SearchSpace):
         SearchSpaceState
             New state for the search to continue with.
         """
-        accepted = False
+        # Determine order
+        att_ord = np.random.permutation(
+            np.arange(len(self._current_solution.model.event_list))
+        )
         fail_count = 0
 
-        while not accepted:
+        for idx in att_ord:
             # Obtain a new state
-            new_state, revert_info = self.get_neighbor_move(dist='linear')
+            new_state, revert_info = self.get_neighbor_move(orig_idx=idx,
+                                                            dist='linear')
+            if new_state is None:
+                continue
+                fail_count += 1
             if new_state.score <= self._current_solution.score or \
                np.random.random() <= math.exp((self._current_solution.score
                                                - new_state.score)
@@ -714,15 +694,13 @@ class SearchSpaceMoveLinear(SearchSpace):
                     self._best_solution.score = new_state.score
                     self._best_solution.slack = new_state.slack
                 self._current_solution = new_state
-                accepted = True
+                break
             else:
                 # Change the model back (the same model instance is used
                 # for both the current and candidate solutions).
                 self.get_neighbor_move_revert(new_state, revert_info)
-
-                if fail_count > 200:
-                    return fail_count, None
                 fail_count += 1
+                new_state = None
 
         return fail_count, new_state
 
@@ -759,12 +737,18 @@ class SearchSpaceMovePair(SearchSpace):
         SearchSpaceState
             New state for the search to continue with.
         """
-        accepted = False
+        # Determine order
+        att_ord = np.random.permutation(
+            np.arange(len(self._current_solution.model.job_properties))
+        )
         fail_count = 0
 
-        while not accepted:
+        for idx in att_ord:
             # Obtain a new state
-            new_state, revert_info = self.get_neighbor_move_pair()
+            new_state, revert_info = self.get_neighbor_move_pair(job=idx)
+            if new_state is None:
+                continue
+                fail_count += 1
             if new_state.score <= self._current_solution.score or \
                np.random.random() <= math.exp((self._current_solution.score
                                                - new_state.score)
@@ -774,15 +758,13 @@ class SearchSpaceMovePair(SearchSpace):
                     self._best_solution.score = new_state.score
                     self._best_solution.slack = new_state.slack
                 self._current_solution = new_state
-                accepted = True
+                break
             else:
                 # Change the model back (the same model instance is used
                 # for both the current and candidate solutions).
                 self.get_neighbor_move_pair_revert(new_state, revert_info)
-
-                if fail_count > 200:
-                    return fail_count, None
                 fail_count += 1
+                new_state = None
 
         return fail_count, new_state
 
@@ -822,18 +804,73 @@ class SearchSpaceCombined(SearchSpace):
         SearchSpaceState
             New state for the search to continue with.
         """
-        accepted = False
+        # Awful programming, but it works
+        frac = np.random.random()
+        if frac < self._fracs["swap"]:
+            fail_count, new_state = \
+                self._get_neighbor_swap_aggregate(temperature)
+            if new_state is None:
+                fail_count1, new_state = \
+                    self._get_neighbor_movelinear_aggregate(temperature)
+                fail_count += fail_count1
+                if new_state is None:
+                    fail_count2, new_state = \
+                        self._get_neighbor_move_pair_aggregate(temperature)
+                    fail_count += fail_count2
+        elif frac < self._fracs["swap"] + self._fracs["move"]:
+            fail_count, new_state = \
+                self._get_neighbor_movelinear_aggregate(temperature)
+            if new_state is None:
+                fail_count1, new_state = \
+                    self._get_neighbor_swap_aggregate(temperature)
+                fail_count += fail_count1
+                if new_state is None:
+                    fail_count2, new_state = \
+                        self._get_neighbor_move_pair_aggregate(temperature)
+                    fail_count += fail_count2
+        else:
+            fail_count, new_state = \
+                self._get_neighbor_move_pair_aggregate(temperature)
+            if new_state is None:
+                fail_count1, new_state = \
+                    self._get_neighbor_swap_aggregate(temperature)
+                fail_count += fail_count1
+                if new_state is None:
+                    fail_count2, new_state = \
+                        self._get_neighbor_movelinear_aggregate(temperature)
+                    fail_count += fail_count2
+
+        return fail_count, new_state
+
+    def _get_neighbor_move_pair_aggregate(self, temperature):
+        """Template method for finding candidate solutions.
+
+        Parameters
+        ----------
+        temperature : float
+            Current annealing temperature, used in determining if a
+            candidate with a lower objective should be accepted.
+
+        Returns
+        -------
+        int
+            Number of candidate solutions that were considered, but
+            rejected.
+        SearchSpaceState
+            New state for the search to continue with.
+        """
+        # Determine order
+        att_ord = np.random.permutation(
+            np.arange(len(self._current_solution.model.job_properties))
+        )
         fail_count = 0
 
-        while not accepted:
+        for idx in att_ord:
             # Obtain a new state
-            frac = np.random.random()
-            if frac < self._fracs["swap"]:
-                new_state, revert_info = self.get_neighbor_swap()
-            elif frac < self._fracs["swap"] + self._fracs["move"]:
-                new_state, revert_info = self.get_neighbor_move()
-            else:
-                new_state, revert_info = self.get_neighbor_move_pair()
+            new_state, revert_info = self.get_neighbor_move_pair(job=idx)
+            if new_state is None:
+                continue
+                fail_count += 1
             if new_state.score <= self._current_solution.score or \
                np.random.random() <= math.exp((self._current_solution.score
                                                - new_state.score)
@@ -843,20 +880,159 @@ class SearchSpaceCombined(SearchSpace):
                     self._best_solution.score = new_state.score
                     self._best_solution.slack = new_state.slack
                 self._current_solution = new_state
-                accepted = True
+                break
             else:
                 # Change the model back (the same model instance is used
                 # for both the current and candidate solutions).
-                if frac < self._fracs["swap"]:
-                    self.get_neighbor_swap_revert(new_state, revert_info)
-                elif frac < self._fracs["swap"] + self._fracs["move"]:
-                    self.get_neighbor_move_revert(new_state, revert_info)
-                else:
-                    self.get_neighbor_move_pair_revert(new_state, revert_info)
-
-                if fail_count > 200:
-                    return fail_count, None
+                self.get_neighbor_move_pair_revert(new_state, revert_info)
                 fail_count += 1
+                new_state = None
+
+        return fail_count, new_state
+
+    def _get_neighbor_moveuniform_aggregate(self, temperature):
+        """Template method for finding candidate solutions.
+
+        Parameters
+        ----------
+        temperature : float
+            Current annealing temperature, used in determining if a
+            candidate with a lower objective should be accepted.
+
+        Returns
+        -------
+        int
+            Number of candidate solutions that were considered, but
+            rejected.
+        SearchSpaceState
+            New state for the search to continue with.
+        """
+        # Determine order
+        att_ord = np.random.permutation(
+            np.arange(len(self._current_solution.model.event_list))
+        )
+        fail_count = 0
+
+        for idx in att_ord:
+            # Obtain a new state
+            new_state, revert_info = self.get_neighbor_move(orig_idx=idx)
+            if new_state is None:
+                continue
+                fail_count += 1
+            if new_state.score <= self._current_solution.score or \
+               np.random.random() <= math.exp((self._current_solution.score
+                                               - new_state.score)
+                                              / temperature):
+                if new_state.score < self._best_solution.score:
+                    self._best_solution = copy.copy(new_state)
+                    self._best_solution.score = new_state.score
+                    self._best_solution.slack = new_state.slack
+                self._current_solution = new_state
+                break
+            else:
+                # Change the model back (the same model instance is used
+                # for both the current and candidate solutions).
+                self.get_neighbor_move_revert(new_state, revert_info)
+                fail_count += 1
+                new_state = None
+
+        return fail_count, new_state
+
+    def _get_neighbor_movelinear_aggregate(self, temperature):
+        """Template method for finding candidate solutions.
+
+        Parameters
+        ----------
+        temperature : float
+            Current annealing temperature, used in determining if a
+            candidate with a lower objective should be accepted.
+
+        Returns
+        -------
+        int
+            Number of candidate solutions that were considered, but
+            rejected.
+        SearchSpaceState
+            New state for the search to continue with.
+        """
+        # Determine order
+        att_ord = np.random.permutation(
+            np.arange(len(self._current_solution.model.event_list))
+        )
+        fail_count = 0
+
+        for idx in att_ord:
+            # Obtain a new state
+            new_state, revert_info = self.get_neighbor_move(orig_idx=idx,
+                                                            dist='linear')
+            if new_state is None:
+                continue
+                fail_count += 1
+            if new_state.score <= self._current_solution.score or \
+               np.random.random() <= math.exp((self._current_solution.score
+                                               - new_state.score)
+                                              / temperature):
+                if new_state.score < self._best_solution.score:
+                    self._best_solution = copy.copy(new_state)
+                    self._best_solution.score = new_state.score
+                    self._best_solution.slack = new_state.slack
+                self._current_solution = new_state
+                break
+            else:
+                # Change the model back (the same model instance is used
+                # for both the current and candidate solutions).
+                self.get_neighbor_move_revert(new_state, revert_info)
+                fail_count += 1
+                new_state = None
+
+        return fail_count, new_state
+
+    def _get_neighbor_swap_aggregate(self, temperature):
+        """Template method for finding candidate solutions.
+
+        Parameters
+        ----------
+        temperature : float
+            Current annealing temperature, used in determining if a
+            candidate with a lower objective should be accepted.
+
+        Returns
+        -------
+        int
+            Number of candidate solutions that were considered, but
+            rejected.
+        SearchSpaceState
+            New state for the search to continue with.
+        """
+        # Determine order
+        att_ord = np.random.permutation(
+            # We cannot try the last one.
+            np.arange(len(self._current_solution.model.event_list) - 1)
+        )
+        fail_count = 0
+
+        for idx in att_ord:
+            # Obtain a new state
+            new_state, revert_info = self.get_neighbor_swap(swap_id=idx)
+            if new_state is None:
+                continue
+                fail_count += 1
+            if new_state.score <= self._current_solution.score or \
+               np.random.random() <= math.exp((self._current_solution.score
+                                               - new_state.score)
+                                              / temperature):
+                if new_state.score < self._best_solution.score:
+                    self._best_solution = copy.copy(new_state)
+                    self._best_solution.score = new_state.score
+                    self._best_solution.slack = new_state.slack
+                self._current_solution = new_state
+                break
+            else:
+                # Change the model back (the same model instance is used
+                # for both the current and candidate solutions).
+                self.get_neighbor_swap_revert(new_state, revert_info)
+                fail_count += 1
+                new_state = None
 
         return fail_count, new_state
 

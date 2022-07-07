@@ -54,8 +54,8 @@ def simulated_annealing(search_space, params=None):
         fails, new_state = search_space.get_neighbor(temperature)
 
         if new_state is None:
-            # If we were unable to accept a candidate solution from 200
-            # options, we give up.
+            # If we were unable to accept a candidate solution from all
+            # available options, we give up.
             iters = i + 1
             break
 
