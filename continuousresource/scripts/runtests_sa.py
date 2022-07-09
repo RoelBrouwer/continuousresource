@@ -79,36 +79,49 @@ from continuousresource.simulatedannealing.searchspace \
 )
 def main(format, path, solver, output_dir, label, verbose):
     # Vary parameters here
-    slackpenalties = [5, 5]
-    sp = {
-        'initial_temperature': 30,  # 50% acceptence for diff ~20
-        'alfa': 0.95,
-        # neighborhood size = 2n - 1 for adjacent swap
-        'alfa_period_func': (lambda n: (2 * n - 1) * 8),
-        'cutoff_func': (lambda n: (2 * n - 1) * 8 * 50)
-        # Cool off to 4.34 for 20; 0.22 for 1 to accept only 1%
-    }
-    spps = [
-        {
-            'infer_precedence': False,
-            'fracs': {"swap": 1.00, "move": 0.0, "movepair": 0.0},
-            'start_solution': "random"
-        }
+    sp_class = SearchSpaceCombined
+    temps = [30, 45, 60, 75]
+    alfas = [0.95, 0.99]
+    period_multiplier = [2, 4, 6, 8, 10]
+    fracs = [
+        {"swap": 1.00, "move": 0.0, "movepair": 0.0},
+        {"swap": 0.9, "move": 0.1, "movepair": 0.0},
+        {"swap": 0.9, "move": 0.05, "movepair": 0.05},
+        {"swap": 0.75, "move": 0.25, "movepair": 0.0},
+        {"swap": 0.75, "move": 0.15, "movepair": 0.1}
     ]
-    model_class = OrderBasedSubProblemWithSlack
+    slackpenalties = [5, 5]
 
-    spp1 = {
-        'infer_precedence': False,
-        'fracs': {"swap": 0.90, "move": 0.1, "movepair": 0.0},
-        'start_solution': "greedy"
-    }
-    for sp_class in [SearchSpaceSwap, SearchSpaceMove, SearchSpaceMovePair, SearchSpaceMoveLinear, SearchSpaceCombined]:
-        search_space = sp_class(spp1)
-        output_dir2 = os.path.join(output_dir, search_space.name)
-        if not os.path.isdir(output_dir2):
-            os.mkdir(output_dir2)
-        run_on_instances(format, path, solver, output_dir2, label, verbose,
-                         sp, spp1, search_space, model_class, slackpenalties)
+    for temperature in temps:
+        for alfa in alfas:
+            for multiplier in period_multiplier:
+                for idx, frac in enumerate(fracs):
+                    # if (temperature == 15 and alfa == 0.95 and multiplier in [2, 4, 6]):
+                        # continue
+                    if idx == 0 or temperature == 15 or alfa == 0.99 or idx == 2 or multiplier == 2 or multiplier == 6:
+                        continue
+
+                    sp = {
+                        'initial_temperature': temperature,  # 50% acceptence for diff ~20
+                        'alfa': alfa,
+                        # neighborhood size = 2n - 1 for adjacent swap
+                        'alfa_period_func': (lambda n: (2 * n - 1) * multiplier),
+                        'cutoff_func': (lambda n: (2 * n - 1) * 500)
+                        # Cool off to 4.34 for 20; 0.22 for 1 to accept only 1%
+                    }
+                    model_class = OrderBasedSubProblemWithSlack
+
+                    spp = {
+                        'infer_precedence': True,
+                        'fracs': frac,
+                        'start_solution': "greedy"
+                    }
+                    search_space = sp_class(spp)
+                    output_dir2 = os.path.join(output_dir, f'temp{temperature}alfa{alfa}mult{multiplier}frac{idx}')
+                    if not os.path.isdir(output_dir2):
+                        os.mkdir(output_dir2)
+                    run_on_instances(format, path, solver, output_dir2, label, verbose,
+                                     sp, spp, search_space, model_class, slackpenalties)
 
     # for spp in spps:
         # search_space = SearchSpaceCombined(spp)
