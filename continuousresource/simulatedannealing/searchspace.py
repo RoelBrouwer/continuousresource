@@ -270,7 +270,7 @@ class SearchSpace():
 
         # If the range of possibilities is limited to the current
         # position, we select another job.
-        if rlimit - llimit == 2:
+        if rlimit - llimit <= 2:
             return None, (orig_idx, orig_idx)
         else:
             new_idx = orig_idx
@@ -423,7 +423,7 @@ class SearchSpace():
 
         # If the range of possibilities is limited to the current
         # position, we select another job.
-        if rlimit - llimit == 2:
+        if rlimit - llimit <= 2:
             return None, (idx1, idx2, 0)
         else:
             while offset == 0:

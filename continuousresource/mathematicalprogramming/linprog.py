@@ -1316,8 +1316,11 @@ class OrderBasedSubProblem(LP):
         # earliest possible time of another event, has to come before it.
         return np.array([
             [
-                (i % 2 == 0 and j - i == 1) or (inferred_limits[i, 1] <=
-                                                inferred_limits[j, 0])
+                ((i % 2 == 0 and j - i == 1) or (inferred_limits[i, 1] <=
+                                                 inferred_limits[j, 0])) and
+                i != j  # If this happens, the instance is infeasible
+                        # anyway, but we don't want it to crash. Figure
+                        # out a way to deal with this better... TODO
                 for j in range(len(self._event_list))
             ]
             for i in range(len(self._event_list))
