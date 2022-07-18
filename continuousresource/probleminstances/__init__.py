@@ -1,2 +1,2 @@
-from .baseinstance import *  # noqa
-from .legacyinstance import *  # noqa
+from .jobarrayinstance import JobPropertiesInstance  # noqa
+from .legacyinstance import LegacyInstance  # noqa

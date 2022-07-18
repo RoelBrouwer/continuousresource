@@ -40,12 +40,11 @@ from continuousresource.probleminstances.legacyinstance \
     help="Label or name for the generated instance."
 )
 def main(exportpath, exportformat, label):
-    # TODO: think of useful parameters
-    for n in [10, 20, 50, 100]:  # [10, 20, 50, 100, 200]:
+    for n in [10, 20, 50, 100]:
         for k in [2, 3, 4, 9]:
             for m in [25.0, 50.0, 100.0, 200.0]:
                 for s in [0.05 * m, 0.1 * m, 0.2 * m]:
-                    for r in [True]:  # , False]:
+                    for r in [True, False]:
                         instance = \
                             LegacyInstance.generate_instance(n, m, s, k, r)
 

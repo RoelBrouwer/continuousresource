@@ -1,6 +1,7 @@
 from abc import ABC
 from abc import abstractmethod
 
+
 class BaseInstance(ABC):
     """Class template for grouping functions related to problem instances
     of a specific type.

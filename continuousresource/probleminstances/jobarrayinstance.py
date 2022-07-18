@@ -1,6 +1,5 @@
 import csv
 import datetime
-import math
 import numpy as np
 import os
 import os.path
@@ -253,7 +252,7 @@ class JobPropertiesInstance(BaseInstance):
         if adversarial:
             # Sort by deadline, and reorder the weights to be
             # non-decreasing.
-            arr = jobs[jobs[:, 4].argsort()]
+            jobs = jobs[jobs[:, 4].argsort()]
             jobs[:, 5].sort()
 
         return {

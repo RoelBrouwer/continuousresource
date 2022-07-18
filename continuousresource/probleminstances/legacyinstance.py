@@ -6,7 +6,7 @@ import os.path
 import warnings
 
 
-from continuousresource.probleminstances.baseinstance import BaseInstance
+from .baseinstance import BaseInstance
 
 
 class LegacyInstance(BaseInstance):

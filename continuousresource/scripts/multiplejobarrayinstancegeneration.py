@@ -99,7 +99,7 @@ def main(exportpath, exportformat, label):
             'n;r;adversarial;serialID;feasible\n'
         )
         for n in [5, 10, 15, 20, 50, 100, 200, 300]:
-            for r in [25.0, 50.0, 100.0, 200.0]: #, 500.0]:
+            for r in [25.0, 50.0, 100.0, 200.0]:
                 for a in [True, False]:
                     for i in range(4):
                         instance = JobPropertiesInstance.generate_instance(
