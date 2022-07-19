@@ -16,6 +16,11 @@ class SearchSpace():
         the following keys:
             - `infer_precedence` (bool): Flag indicating whether to infer
               and continuously check (implicit) precedence relations.
+            - `fracs` (dict of float): Dictionary indicating the
+              probability of selecting each neighborhood operator.
+            - `start_solution` (str): String indicating the method of
+              generating a starting solution. Either "random" or
+              "greedy".
     """
     def __init__(self, params=None):
         self._params = sanitize_search_space_params(params)
@@ -111,8 +116,6 @@ class SearchSpace():
         float
             Timing (in seconds) of the actual initial solution generation,
         """
-        # For now the initial solution is just the eventlist exactly as
-        # presented.
         initial = SearchSpaceState(self, eventlist)
         initial.create_model(model_class, eventlist, *args, **kwargs)
         self._precedences = \
@@ -125,7 +128,6 @@ class SearchSpace():
         t_end = time.perf_counter()
         initial.model.initialize_problem()
         initial.eventorder = initial.model.event_list
-        # print(initial.model.problem.lp_string)
         self._current_solution = initial
         initial.compute_score()
         self._best_solution = copy.copy(initial)
@@ -1252,16 +1254,18 @@ class SearchSpaceState():
     ----------
     belongs_to : SearchSpace
         Search space wherein this object represents a state.
+    eventorder : ndarray
+        Two-dimensional (|E| x 2) array representing the events in
+        the problem, where the first column contains an integer
+        indicating the event type (0 for start, 1 for completion) and
+        the second column the associated job ID.
     """
     def __init__(self, belongs_to, eventorder):
-        # TODO: we may not need to include the eventorder here at all:
-        # access via self._lp_model.event_list
         self._searchspace = belongs_to
         self._eventorder = eventorder
         self._score = np.inf
         self._slack = []
         self._lp_model = None
-        self._schedule = None
 
     def __copy__(self):
         """Override copy method to make copies of some attributes and
@@ -1270,21 +1274,29 @@ class SearchSpaceState():
         new_state = SearchSpaceState(self._searchspace,
                                      copy.copy(self._eventorder))
         new_state.model = self._lp_model
-        new_state.schedule = copy.copy(self._schedule)
         return new_state
 
     @property
     def score(self):
+        """float : Score of the represented solution (objective value of
+        the LP referenced in `model`).
+        """
         return self._score
 
     @score.setter
     def score(self, score):
         """Manually set the value of the score attribute for this state.
-        Use with caution."""
+        Use with caution.
+        """
         self._score = score
 
     @property
     def slack(self):
+        """list of tuple : List of tuples with in the first position a
+        string identifying the type of slack variable, in second position
+        the summed value of these variables (float) and in third position
+        the unit weight of these variables in the objective.
+        """
         return self._slack
 
     @slack.setter
@@ -1295,10 +1307,15 @@ class SearchSpaceState():
 
     @property
     def model(self):
+        """OrderBasedSubProblem : Object containing the LP model and
+        associated functions."""
         return self._lp_model
 
     @model.setter
     def model(self, model):
+        """Manually set the value of the model attribute for this state.
+        Note that this does not make a copy, it just stores a reference.
+        Use with caution."""
         self._lp_model = model
 
     @property
@@ -1307,15 +1324,9 @@ class SearchSpaceState():
 
     @eventorder.setter
     def eventorder(self, eventorder):
+        """Manually set the value of the eventorder attribute for this
+        state. Use with caution."""
         self._eventorder = eventorder
-
-    @property
-    def schedule(self):
-        return self._schedule
-
-    @schedule.setter
-    def schedule(self, schedule):
-        self._schedule = schedule
 
     def create_model(self, model_class, *args, **kwargs):
         """Create an (LP) model for the current state.
