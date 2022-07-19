@@ -26,8 +26,6 @@ def sanitize_simulated_annealing_params(params):
               before updating the temperature.
             - `cutoff` (int): Maximum number of iterations to run the
               simulated annealing process.
-            - `infer_precedence` (bool): Flag indicating whether to infer
-              and continuously check (implicit) precedence relations.
     """
     if params is None:
         params = {}
@@ -97,7 +95,8 @@ def sanitize_search_space_params(params):
         Sanitized dictionary, with the following keys:
             - `infer_precedence` (bool): Flag indicating whether to infer
               and continuously check (implicit) precedence relations.
-            - `fracs` (dict of float): ...
+            - `fracs` (dict of float): Dictionary indicating the
+              probability of selecting each neighborhood operator.
             - `start_solution` (str): String indicating the method of
               generating a starting solution. Either "random" or
               "greedy".

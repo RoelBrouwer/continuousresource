@@ -1,4 +1,4 @@
-from continuousresource.decomposition import *  # noqa
-from continuousresource.probleminstances import *  # noqa
-from continuousresource.mathematicalprogramming import *  # noqa
-from continuousresource.simulatedannealing import *  # noqa
+from . import decomposition  # noqa
+from . import probleminstances  # noqa
+from . import mathematicalprogramming  # noqa
+from . import simulatedannealing  # noqa

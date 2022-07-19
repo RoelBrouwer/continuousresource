@@ -1,19 +1,16 @@
 import os
 import time
 
-from continuousresource.simulatedannealing.utils \
-    import sanitize_simulated_annealing_params
-from continuousresource.simulatedannealing.searchspace \
-    import SearchSpaceHillClimb
+from .utils import sanitize_simulated_annealing_params
 
 
 def simulated_annealing(search_space, params=None):
     """Routine performing Simulated Annealing local search.
-    The search stops when one of the following three conditions is met:
-        - No candidate solution was accepted after trying 200 options in
-          a single iteration, or;
-        - The percentage of accepted solutions was under 2% for over 10%
-          of the iterations of a single alfa-period, or;
+
+    The search stops when one of the following two conditions is met:
+        - No candidate solution was accepted after trying all options
+          for every neighborhood operators (check the documentation of
+          each neighborhood operator to see what this entails).
         - The total number of iterations exceeds the `cutoff` parameter.
 
     Parameters
@@ -68,12 +65,14 @@ def simulated_annealing(search_space, params=None):
 
 
 def simulated_annealing_verbose(search_space, params=None, output_dir=None):
-    """Routine performing Simulated Annealing local search.
+    """Routine performing Simulated Annealing local search. Produces more
+    output than the regulare simulated annealing routine focussing on
+    individual iterations and time measurements.
+
     The search stops when one of the following three conditions is met:
-        - No candidate solution was accepted after trying 200 options in
-          a single iteration, or;
-        - The percentage of accepted solutions was under 2% for over 10%
-          of the iterations of a single alfa-period, or;
+        - No candidate solution was accepted after trying all options
+          for every neighborhood operators (check the documentation of
+          each neighborhood operator to see what this entails).
         - The total number of iterations exceeds the `cutoff` parameter.
 
     Parameters
@@ -169,18 +168,14 @@ def simulated_annealing_verbose(search_space, params=None, output_dir=None):
     return iters, search_space.best
 
 
-def variable_neighborhood_descent(search_space, params=None):
+def variable_neighborhood_descent(search_space):
     """Routine performing Variable Neighborhood Descent.
 
     Parameters
     ----------
     search_space : SearchSpace
-        Search space object that this simulated annealing run will be
-        performed on.
-    params : Dict
-        Dictionary containing parameters for the simulated annealing run,
-        with the following keys:
-            - ...
+        Search space object that this variable neighborhood search will
+        be performed on.
 
     Returns
     -------
@@ -190,7 +185,6 @@ def variable_neighborhood_descent(search_space, params=None):
         Best found solution.
     """
     # Initialization
-    # sanitized_parameters = sanitize_variable_neighborhood_params(params)
     new_state = search_space.best
     iters = 0
 
@@ -205,13 +199,48 @@ def variable_neighborhood_descent(search_space, params=None):
     return iters, search_space.best
 
 
-def iterated_local_search(search_space, params=None, random_walk_length=100, no_restarts=5):
-    """Just restarts SA a few times."""
+def iterated_local_search(search_space, params=None, random_walk_length=100,
+                          no_restarts=5):
+    """Performs Iterated Local Search by performing `no_restarts` runs of
+    the simulated annealing routine, and distorting the final solution
+    (note: not necessarily the best found solution) by performing a
+    random walk of length `random_walk_length` after each run.
+
+    Parameters
+    ----------
+    search_space : SearchSpace
+        Search space object that the simulated annealing runs will be
+        performed on.
+    params : Dict
+        Dictionary containing parameters for the simulated annealing
+        runs, with the following keys:
+            - `initial_temperature` (float): Initial value for the
+              temperature of the annealing process.
+            - `alfa` (float): Multiplication factor for updating the
+              temperature.
+            - `alfa_period` (int): Number of iterations to go through
+              before updating the temperature.
+            - `cutoff` (int): Maximum number of iterations to run the
+              simulated annealing process.
+    random_walk_length : int
+        Length of the random walk performed after each simulated
+        annealing run, distorting the solution to find a new semi-random
+        starting point.
+    no_restarts : int
+        Number of simulated annealing runs to perform.
+
+    Returns
+    -------
+    int
+        Total number of iterations performed across all runs.
+    SearchSpaceState
+        Best found solution.
+    """
     iters = 0
-    
+
     for _ in range(no_restarts):
         iters1, best = simulated_annealing(search_space, params)
-        
+
         iters += iters1
         # Start random walk from CURRENT (not best) position
         search_space.random_walk(random_walk_length)
