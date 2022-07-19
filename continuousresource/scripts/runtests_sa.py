@@ -13,9 +13,9 @@ from continuousresource.probleminstances.jobarrayinstance \
     import JobPropertiesInstance
 from continuousresource.mathematicalprogramming.linprog \
     import OrderBasedSubProblemWithSlack
-from continuousresource.simulatedannealing.simulatedannealing \
+from continuousresource.localsearch.localsearch \
     import simulated_annealing, simulated_annealing_verbose
-from continuousresource.simulatedannealing.searchspace \
+from continuousresource.localsearch.searchspace \
     import SearchSpaceSwap, SearchSpaceMove, SearchSpaceMovePair, \
     SearchSpaceCombined, SearchSpaceMoveLinear
 

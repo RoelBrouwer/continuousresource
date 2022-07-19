@@ -19,9 +19,9 @@ from continuousresource.mathematicalprogramming.mipmodels \
     import ContinuousResourceMIPPlus
 from continuousresource.mathematicalprogramming.linprog \
     import OrderBasedSubProblemWithSlack
-from continuousresource.simulatedannealing.simulatedannealing \
+from continuousresource.localsearch.localsearch \
     import simulated_annealing
-from continuousresource.simulatedannealing.searchspace \
+from continuousresource.localsearch.searchspace \
     import SearchSpaceSwap
 
 

@@ -3,8 +3,7 @@ import math
 import numpy as np
 import time
 
-from continuousresource.simulatedannealing.utils \
-    import sanitize_search_space_params
+from .utils import sanitize_search_space_params
 
 
 class SearchSpace():

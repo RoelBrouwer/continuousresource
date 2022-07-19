@@ -12,9 +12,9 @@ from continuousresource.probleminstances.jobarrayinstance \
     import JobPropertiesInstance
 from continuousresource.mathematicalprogramming.linprog \
     import OrderBasedSubProblemWithSlack
-from continuousresource.simulatedannealing.simulatedannealing \
+from continuousresource.localsearch.localsearch \
     import iterated_local_search
-from continuousresource.simulatedannealing.searchspace \
+from continuousresource.localsearch.searchspace \
     import SearchSpaceSwap, SearchSpaceMove, SearchSpaceMovePair, \
     SearchSpaceCombined
 

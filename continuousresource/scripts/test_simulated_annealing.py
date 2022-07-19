@@ -1,7 +1,7 @@
 import click
 import numpy as np
 
-from continuousresource.simulatedannealing.simulatedannealing \
+from continuousresource.localsearch.localsearch \
     import SearchSpace, simulated_annealing
 from continuousresource.mathematicalprogramming.linprog \
     import OrderBasedSubProblemWithSlack
