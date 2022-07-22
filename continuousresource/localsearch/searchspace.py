@@ -15,12 +15,13 @@ class SearchSpace():
         Dictionary containing parameters defining the search space, with
         the following keys:
             - `infer_precedence` (bool): Flag indicating whether to infer
-              and continuously check (implicit) precedence relations.
+              and continuously check (implicit) precedence relations;
             - `fracs` (dict of float): Dictionary indicating the
-              probability of selecting each neighborhood operator.
+              probability of selecting each neighborhood operator
+              (`swap`, `move`, `movepair`).
             - `start_solution` (str): String indicating the method of
-              generating a starting solution. Either "random" or
-              "greedy".
+              generating a starting solution. Either `random` or
+              `greedy`.
     """
     def __init__(self, params=None):
         self._params = sanitize_search_space_params(params)

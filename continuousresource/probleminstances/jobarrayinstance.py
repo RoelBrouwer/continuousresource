@@ -259,3 +259,36 @@ class JobPropertiesInstance(BaseInstance):
             'jobs': jobs,
             'constants': constants
         }
+
+    @staticmethod
+    def check_input_dimensions(instance):
+        """Performs some superficial checks on the form of the input
+        data, to ensure that an instance can be constructed from it. Does
+        not perform (m)any meaningful checks on the contents itself.
+
+        Parameters
+        ----------
+        instance : Dict of ndarray
+            Dictionary containing the instance data. It has five fields:
+                - `jobs`, containing a two-dimensional (n x 7) array of
+                  job properties:
+                    - 0: resource requirement (E_j);
+                    - 1: resource lower bound (P^-_j);
+                    - 2: resource upper bound (P^+_j);
+                    - 3: release date (r_j);
+                    - 4: deadline (d_j);
+                    - 5: weight (W_j);
+                    - 6: objective constant (B_j).
+                - `constants`, containing a dictionary of floating points
+                  constants for the instance.
+
+        Returns
+        -------
+        boolean
+            True if all checks are passed, will raise an error otherwise.
+
+        Notes
+        -----
+        Currently not implemented.
+        """
+        raise NotImplementedError

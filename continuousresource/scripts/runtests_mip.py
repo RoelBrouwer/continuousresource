@@ -6,13 +6,10 @@ import re
 import shutil
 import time
 
-import cplex
 from docplex.mp.utils import DOcplexException
 
 from continuousresource.probleminstances.jobarrayinstance \
     import JobPropertiesInstance
-from continuousresource.mathematicalprogramming.mipmodels \
-    import ContinuousResourceMIP
 from continuousresource.mathematicalprogramming.mipmodels \
     import ContinuousResourceMIPPlus
 
@@ -24,7 +21,7 @@ from continuousresource.mathematicalprogramming.mipmodels \
     'format',
     required=True,
     type=click.Choice(['binary', 'csv'], case_sensitive=False),
-    help="Input format of the provided instance."
+    help="Input format of the provided instances."
 )
 @click.option(
     '--path',
@@ -36,15 +33,6 @@ from continuousresource.mathematicalprogramming.mipmodels \
         resolve_path=True
     ),
     help="Path to the folder containing the instances."
-)
-@click.option(
-    '--solver',
-    '-s',
-    'solver',
-    required=False,
-    type=click.Choice(['cplex', 'glpk', 'gurobi'], case_sensitive=False),
-    default='cplex',
-    help="LP solver to be used for the problem."
 )
 @click.option(
     '--output-dir',
@@ -67,15 +55,20 @@ from continuousresource.mathematicalprogramming.mipmodels \
     default=datetime.datetime.now().strftime("%Y%m%d_%H%M%S%f"),
     help="Sufficiently unique label or name for the run."
 )
-@click.option(
-    '--verbose',
-    '-v',
-    'verbose',
-    is_flag=True,
-    help="Log extensive information on the runs. Not used."
-)
-def main(format, path, solver, output_dir, label, verbose):
-    # TODO: document
+def main(format, path, output_dir, label):
+    """Run the MIP model over all instances within the given directory.
+
+    Parameters
+    ----------
+    format : {'binary', 'csv'}
+        Input format of the provided instances.
+    path : str
+        Path to the folder containing the instances.
+    output_dir : str
+        Path to the output directory.
+    label : DateTime
+        Sufficiently unique label or name for the run.
+    """
     timelimit = 3600
 
     with open(os.path.join(output_dir,
@@ -117,7 +110,6 @@ def main(format, path, solver, output_dir, label, verbose):
                 mip = ContinuousResourceMIPPlus(
                     instance,
                     f"{partial_label}_cont_mip",
-                    solver
                 )
                 mip._problem.context.solver.log_output = cplexlog
                 mip.solve(timelimit)

@@ -16,8 +16,7 @@ from continuousresource.mathematicalprogramming.linprog \
 from continuousresource.localsearch.localsearch \
     import simulated_annealing, simulated_annealing_verbose
 from continuousresource.localsearch.searchspace \
-    import SearchSpaceSwap, SearchSpaceMove, SearchSpaceMovePair, \
-    SearchSpaceCombined, SearchSpaceMoveLinear
+    import SearchSpaceCombined
 
 
 @click.command(context_settings=dict(help_option_names=['-h', '--help']))
@@ -27,7 +26,7 @@ from continuousresource.localsearch.searchspace \
     'format',
     required=True,
     type=click.Choice(['binary', 'csv'], case_sensitive=False),
-    help="Input format of the provided instance."
+    help="Input format of the provided instances."
 )
 @click.option(
     '--path',
@@ -39,15 +38,6 @@ from continuousresource.localsearch.searchspace \
         resolve_path=True
     ),
     help="Path to the folder containing the instances."
-)
-@click.option(
-    '--solver',
-    '-s',
-    'solver',
-    required=False,
-    type=click.Choice(['cplex', 'glpk', 'gurobi'], case_sensitive=False),
-    default='cplex',
-    help="LP solver to be used for the problem."
 )
 @click.option(
     '--output-dir',
@@ -77,44 +67,81 @@ from continuousresource.localsearch.searchspace \
     is_flag=True,
     help="Log extensive information on the runs."
 )
-def main(format, path, solver, output_dir, label, verbose):
+def main(format, path, output_dir, label, verbose):
+    """Perform simulated annealing runs for all instances within the
+    given directory.
+
+    Parameters
+    ----------
+    format : {'binary', 'csv'}
+        Input format of the provided instances.
+    path : str
+        Path to the folder containing the instances.
+    output_dir : str
+        Path to the output directory.
+    label : DateTime
+        Sufficiently unique label or name for the run.
+    verbose : bool
+        Log extensive information on the runs.
+    """
     # Vary parameters here
+    model_class = OrderBasedSubProblemWithSlack
     sp_class = SearchSpaceCombined
     slackpenalties = [5, 5]
-
-    sp = {
-        'initial_temperature_func': (lambda n: 5 * n),  # 50% acceptence for diff ~20
+    sa_params = {
+        'initial_temperature_func': (lambda n: 5 * n),
         'alfa': 0.95,
-        # neighborhood size = 2n - 1 for adjacent swap
         'alfa_period_func': (lambda n: (2 * n - 1) * 8),
         'cutoff_func': (lambda n: (2 * n - 1) * 8 * 50)
-        # Cool off to 4.34 for 20; 0.22 for 1 to accept only 1%
     }
-    model_class = OrderBasedSubProblemWithSlack
-
     spp = {
         'infer_precedence': True,
         'fracs': {"swap": 0.75, "move": 0.15, "movepair": 0.1},
         'start_solution': "greedy"
     }
     search_space = sp_class(spp)
+
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
-    run_on_instances(format, path, solver, output_dir, label, verbose,
-                     sp, spp, search_space, model_class, slackpenalties)
 
-    # for spp in spps:
-        # search_space = SearchSpaceCombined(spp)
-        # output_dir2 = os.path.join(output_dir, search_space.name)
-        # if not os.path.isdir(output_dir2):
-            # os.mkdir(output_dir2)
-        # run_on_instances(format, path, solver, output_dir2, label, verbose,
-                         # sp, spp, search_space, model_class, slackpenalties)
+    run_on_instances(format, path, output_dir, label, verbose, sa_params,
+                     search_space, model_class, slackpenalties)
 
 
-def run_on_instances(format, path, solver, output_dir, label, verbose,
-                     sp, spp, search_space, model_class, slackpenalties=None):
-    # TODO: document
+def run_on_instances(format, path, output_dir, label, verbose, sp,
+                     search_space, model_class, slackpenalties=None):
+    """Perform simulated annealing runs for all instances within the
+    given directory.
+
+    Parameters
+    ----------
+    format : {'binary', 'csv'}
+        Input format of the provided instances.
+    path : str
+        Path to the folder containing the instances.
+    output_dir : str
+        Path to the output directory.
+    label : DateTime
+        Sufficiently unique label or name for the run.
+    verbose : bool
+        Log extensive information on the runs.
+    sp : dict
+        Dictionary with values for the parameters used to tune the
+        simulated annealing approach, with the following keys:
+            - `initial_temperature_func`: function (lambda n) that
+              computes the initial temperature;
+            - `alfa`: float indicating the cooling factor;
+            - `alfa_period_func`: function (lambda n) that computes the
+              number of iterations between cooling events;
+            - `cutoff_func`: function (lambda n) that computes the
+              maximum number of iterations.
+    search_space : SearchSpace
+        Search space used in simulated annealing.
+    model_class : str
+        Name of the class used to model the LP subproblem in.
+    slackpenalties : list of float
+        List of penalty coefficients for slack variables.
+    """
     with open(os.path.join(output_dir,
                            f"{label}_summary.csv"), "w") as csv:
         csv.write(
@@ -157,7 +184,8 @@ def run_on_instances(format, path, solver, output_dir, label, verbose,
 
             sp['alfa_period'] = sp['alfa_period_func'](int(params.group(1)))
             sp['cutoff'] = sp['cutoff_func'](int(params.group(1)))
-            sp['initial_temperature'] = sp['initial_temperature_func'](int(params.group(1)))
+            sp['initial_temperature'] = \
+                sp['initial_temperature_func'](int(params.group(1)))
 
             t_start = time.perf_counter()
             sol_init_time, sol_init_score = \
@@ -203,12 +231,12 @@ Total time (s): {t_end - t_start}
 
             # Write diagnostics to json files
             json.dump(
-                search_space.timings, 
+                search_space.timings,
                 open(os.path.join(output_dir, instance_name,
                                   f"{partial_label}_timings.json"), 'w')
             )
             json.dump(
-                search_space.operator_data, 
+                search_space.operator_data,
                 open(os.path.join(output_dir, instance_name,
                                   f"{partial_label}_operator_data.json"), 'w')
             )
@@ -216,7 +244,6 @@ Total time (s): {t_end - t_start}
             total_slack = 0
             if solution.model.with_slack and len(solution.slack) > 0:
                 for (slack_label, value, weight) in solution.slack:
-                    # print(f'{slack_label}: {value} * {weight}')
                     total_slack += value * weight
 
             # Build-up CSV-file
