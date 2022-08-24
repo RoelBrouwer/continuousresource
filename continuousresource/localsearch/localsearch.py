@@ -60,7 +60,7 @@ def simulated_annealing(search_space, params=None):
         # Update temperature for next iteration block
         if i % alfa_period:
             difference = (search_space.current.score - prev_score) / prev_score
-            if difference < 0.01:
+            if difference < 0.001:
                 iters = i + 1
                 break
             prev_score = search_space.current.score
@@ -170,7 +170,7 @@ def simulated_annealing_verbose(search_space, params=None, output_dir=None):
             # Update temperature for next iteration block
             if i % alfa_period:
                 difference = (search_space.current.score - prev_score) / prev_score
-                if difference < 0.01:
+                if difference < 0.001:
                     iters = i + 1
                     break
                 prev_score = search_space.current.score
