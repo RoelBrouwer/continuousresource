@@ -44,6 +44,7 @@ def simulated_annealing(search_space, params=None):
     cutoff = sanitized_parameters['cutoff']
     temperature = sanitized_parameters['initial_temperature']
     iters = cutoff
+    prev_score = search_space.current.score
 
     # Main loop
     for i in range(cutoff):
@@ -58,6 +59,10 @@ def simulated_annealing(search_space, params=None):
 
         # Update temperature for next iteration block
         if i % alfa_period:
+            difference = (prev_score - search_space.current.score) / prev_score
+            if difference < 0.05:
+                break
+            prev_score = search_space.current.score
             temperature = temperature * alfa
 
     # Return solution
@@ -121,6 +126,7 @@ def simulated_annealing_verbose(search_space, params=None, output_dir=None):
         cutoff = sanitized_parameters['cutoff']
         temperature = sanitized_parameters['initial_temperature']
         iters = cutoff
+        prev_score = search_space.current.score
         start_time = time.perf_counter()
 
         # Main loop
@@ -147,10 +153,6 @@ def simulated_annealing_verbose(search_space, params=None, output_dir=None):
                 )
                 break
 
-            # Update temperature for next iteration block
-            if i % alfa_period:
-                temperature = temperature * alfa
-
             slack_string = ""
             if search_space.current.model.with_slack:
                 total_slack = 0
@@ -163,6 +165,14 @@ def simulated_annealing_verbose(search_space, params=None, output_dir=None):
                 f'{search_space.best.score};{search_space.current.score};'
                 f'{fails}{slack_string}\n'
             )
+
+            # Update temperature for next iteration block
+            if i % alfa_period:
+                difference = (prev_score - search_space.current.score) / prev_score
+                if difference < 0.05:
+                    break
+                prev_score = search_space.current.score
+                temperature = temperature * alfa
 
     # Return solution
     return iters, search_space.best
