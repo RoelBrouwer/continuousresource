@@ -90,8 +90,8 @@ def main(format, path, output_dir, label, verbose):
     slackpenalties = [5, 5]
     sa_params = {
         'initial_temperature_func': (lambda n: 4 * n),
-        'alfa': 0.95,
-        'alfa_period_func': (lambda n: (2 * n - 1) * 4),
+        'alfa': 0.99,
+        'alfa_period_func': (lambda n: (2 * n - 1) * 8),
         'cutoff_func': (lambda n: (2 * n - 1) * 8 * 50)
     }
     spp = {
