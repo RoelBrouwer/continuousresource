@@ -143,6 +143,53 @@ class SearchSpace():
         """
         pass
 
+    def get_random_order(self, prec_matrix=None):
+        """Returns a random event order that respects (precomputed)
+        precedence relations.
+        Parameters
+        ----------
+        eventlist : list of list of int
+            List of lists of length two, representing the events in the
+            eventlist being built. First element in each lists is the
+            event type, second element the job ID.
+        prec_matrix : ndarray
+            Two-dimensional array (|E| x |E|) representing the precedence
+            relations between events. A 1 on position [i, j] means that i
+            comes before j. I.e., only if the sum of column i is 0, the
+            event can occur freely.
+        Returns
+        -------
+        list of list of int
+            List of lists of length two, representing the events in the
+            eventlist. First element in each lists is the event type,
+            second element the job ID.
+        """
+        if self._current_solution is None:
+            raise RuntimeError("Please initialize a model first")
+
+        if prec_matrix is None:
+            prec_matrix = self._precedences
+
+        eventlist = self._current_solution.model.event_list
+
+        random_list = [
+            [0, 0] for i in range(len(eventlist))
+        ]
+
+        for i in range(len(eventlist)):
+            # Indices of events that are "precedent-free"
+            opt = np.where(np.all(~prec_matrix, axis=0))[0]
+            if (len(opt) > 0):
+                selected = np.random.choice(opt)
+                random_list[i] = eventlist[selected]
+                prec_matrix = np.delete(prec_matrix, selected, 0)
+                prec_matrix = np.delete(prec_matrix, selected, 1)
+                del eventlist[selected]
+            else:
+                return None
+
+        return random_list
+
     def get_neighbor(self, temperature):
         """Template method for finding candidate solutions.
 
