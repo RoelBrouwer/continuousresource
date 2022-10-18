@@ -59,11 +59,6 @@ def simulated_annealing(search_space, params=None):
 
         # Update temperature for next iteration block
         if i > 0 and i % alfa_period == 0:
-            # difference = (search_space.current.score - prev_score) / prev_score
-            # if difference < 0.001:
-            #     iters = i + 1
-            #     break
-            # prev_score = search_space.current.score
             temperature = temperature * alfa
 
     # Return solution
@@ -127,7 +122,6 @@ def simulated_annealing_verbose(search_space, params=None, output_dir=None):
         cutoff = sanitized_parameters['cutoff']
         temperature = sanitized_parameters['initial_temperature']
         iters = cutoff
-        # prev_score = search_space.current.score
         start_time = time.perf_counter()
 
         # Main loop
@@ -169,11 +163,6 @@ def simulated_annealing_verbose(search_space, params=None, output_dir=None):
 
             # Update temperature for next iteration block
             if i > 0 and i % alfa_period == 0:
-                # difference = (search_space.current.score - prev_score) / prev_score
-                # if difference < 0.001:
-                    # iters = i + 1
-                    # break
-                # prev_score = search_space.current.score
                 temperature = temperature * alfa
 
     # Return solution
