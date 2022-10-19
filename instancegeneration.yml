@@ -3,7 +3,9 @@ channels:
   - defaults
 dependencies:
   - click
+  - flake8
   - matplotlib
   - numpy
   - pandas
+  - pytest
 

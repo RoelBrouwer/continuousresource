@@ -3,9 +3,10 @@ channels:
   - conda-forge
 dependencies:
   - click
+  - flake8
   - matplotlib
   - numpy
   - pandas
-  - pulp
+  - pytest
   - python=3.8
 
