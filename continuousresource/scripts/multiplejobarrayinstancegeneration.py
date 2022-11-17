@@ -67,6 +67,12 @@ def main(exportpath, exportformat, label):
             'release_date_shift': 0.125,
             'processing_window_size': 1.5
         },
+        '30': {
+            'resource_fraction': 0.25,
+            'requirement_fraction': 0.25,
+            'release_date_shift': 0.125,
+            'processing_window_size': 1.5
+        },
         '50': {
             'resource_fraction': 0.25,
             'requirement_fraction': 0.25,
@@ -98,7 +104,7 @@ def main(exportpath, exportformat, label):
         csv.write(
             'n;r;adversarial;serialID;feasible\n'
         )
-        for n in [5, 10, 15, 20, 50, 100, 200, 300]:
+        for n in [5, 10, 15, 20, 30, 50, 100, 200, 300]:
             for r in [25.0, 50.0, 100.0, 200.0]:
                 for a in [True, False]:
                     for i in range(4):
