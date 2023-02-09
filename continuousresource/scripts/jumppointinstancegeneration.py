@@ -2,8 +2,8 @@ import click
 import datetime
 import os.path
 
-from continuousresource.probleminstances.jobarrayinstance \
-    import JobPropertiesInstance
+from continuousresource.probleminstances.jumppointinstance \
+    import JumpPointInstance
 
 
 @click.command(context_settings=dict(help_option_names=['-h', '--help']))
@@ -14,6 +14,14 @@ from continuousresource.probleminstances.jobarrayinstance \
     required=True,
     type=int,
     help="Number of jobs in the generated instance."
+)
+@click.option(
+    '--kjumppoints',
+    '-k',
+    'kjumppoints',
+    required=True,
+    type=int,
+    help="Number of jump points in the cost function of each job."
 )
 @click.option(
     '--resource_avail',
@@ -55,13 +63,16 @@ from continuousresource.probleminstances.jobarrayinstance \
     default=datetime.datetime.now().strftime("%Y%m%d_%H%M%S%f"),
     help="Label or name for the generated instance."
 )
-def main(njobs, resource_availability, exportformat, exportpath, label):
+def main(njobs, kjumppoints, resource_availability, exportformat, exportpath,
+         label):
     """Generate a single instance of ...
 
     Parameters
     ----------
     njobs : int
         Number of jobs in the generated instance.
+    kjumppoints : int
+        Number of jump points in the cost function of each job.
     resource_availability : float
         The continuously available amount of resource in the instance.
     exportformat : {'both', 'binary', 'csv'}
@@ -71,15 +82,15 @@ def main(njobs, resource_availability, exportformat, exportpath, label):
     label : str
         Label or name for the generated instance.
     """
-    instance = JobPropertiesInstance.generate_instance(njobs,
-                                                       resource_availability)
+    instance = JumpPointInstance.generate_instance(njobs, kjumppoints,
+                                                   resource_availability)
 
     if exportformat in ['both', 'binary']:
         path = os.path.join(exportpath, label)
-        JobPropertiesInstance.to_binary(path, instance)
+        JumpPointInstance.to_binary(path, instance)
     if exportformat in ['both', 'csv']:
         path = os.path.join(exportpath, label)
-        JobPropertiesInstance.to_csv(path, instance)
+        JumpPointInstance.to_csv(path, instance)
 
 
 if __name__ == "__main__":

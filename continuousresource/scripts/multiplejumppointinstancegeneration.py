@@ -1,10 +1,10 @@
 import click
 import datetime
+import numpy as np
 import os.path
 
-
-from continuousresource.probleminstances.jobarrayinstance \
-    import JobPropertiesInstance
+from continuousresource.probleminstances.jumppointinstance \
+    import JumpPointInstance
 from continuousresource.mathematicalprogramming.flowfeasibility \
     import FeasibilityWithoutLowerbound
 
@@ -102,38 +102,44 @@ def main(exportpath, exportformat, label):
                            f"{label}_instances_overview.csv"), "w") as csv:
         # Header
         csv.write(
-            'n;r;adversarial;serialID;feasible\n'
+            'n;k;r;serialID;feasible\n'
         )
         for n in [5, 10, 15, 20, 30, 50, 100, 200, 300]:
-            for r in [25.0, 50.0, 100.0, 200.0]:
-                for a in [True, False]:
+            for k in [3, 4, 5]:
+                for r in [25.0, 50.0, 100.0, 200.0]:
                     for i in range(4):
-                        instance = JobPropertiesInstance.generate_instance(
-                            n, r, adversarial=a, params=params[str(n)]
+                        instance = JumpPointInstance.generate_instance(
+                            n, k, r, params=params[str(n)]
                         )
+
+                        # Squeeze instance into a format understood by
+                        # the feasibility test
+                        jobs = np.empty(shape=(n, 5))
+                        jobs[:, :3] = instance['properties']
+                        jobs[:, 3] = instance['jumppoints'][:, 0]
+                        jobs[:, 4] = instance['jumppoints'][:, -1]
 
                         # Solve flow problem
                         lp = FeasibilityWithoutLowerbound(
-                            instance['jobs'],
+                            jobs,
                             instance['constants']['resource_availability'],
-                            f'{n}-{r}-{a}-{i}'
+                            f'{n}-{k}-{r}-{i}'
                         )
                         lp.initialize_problem()
                         feasible = lp.solve() is not None
 
                         csv.write(
-                            f'{n};{r:.2f};{"1" if a else "0"};{i};'
+                            f'{n};{k};{r:.2f};{i};'
                             f'{"1" if feasible else "0"}\n'
                         )
 
-                        inst_label = (f"{label}_n{n}r{r:.2f}"
-                                      f"a{'1' if a else '0'}i{i}")
+                        inst_label = (f"{label}_n{n}k{k}r{r:.2f}i{i}")
                         if exportformat in ['both', 'binary']:
                             path = os.path.join(exportpath, inst_label)
-                            JobPropertiesInstance.to_binary(path, instance)
+                            JumpPointInstance.to_binary(path, instance)
                         if exportformat in ['both', 'csv']:
                             path = os.path.join(exportpath, inst_label)
-                            JobPropertiesInstance.to_csv(path, instance)
+                            JumpPointInstance.to_csv(path, instance)
 
 
 if __name__ == "__main__":

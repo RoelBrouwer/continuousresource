@@ -227,7 +227,7 @@ class JobPropertiesInstance(BaseInstance):
                 high=jobs[j, 0]
             )
             for j in range(njobs)
-        ]).round(decimals=2)
+        ]).clip(max=resource_availability).round(decimals=2)
 
         # We take the minimal processing time as an upperbound for
         # for release date and deadline generation.
