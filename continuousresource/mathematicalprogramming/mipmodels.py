@@ -545,3 +545,13 @@ class JobPropertiesContinuousMIPPlus(JobPropertiesContinuousMIP):
                     - (instance['jobs'][j, 0] / instance['jobs'][j, 2]) >= 0,
                     ctname=f"Processing_time_lower_limit_job_{j}"
                 )
+
+
+class JumpPointContinuousMIP(MIP):
+    def __init__(self, instance, label):
+        raise NotImplementedError
+
+
+class JumpPointContinuousMIPPlus(JumpPointContinuousMIP):
+    def __init__(self, instance, label):
+        raise NotImplementedError
