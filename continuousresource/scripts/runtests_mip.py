@@ -10,8 +10,10 @@ from docplex.mp.utils import DOcplexException
 
 from continuousresource.probleminstances.jobarrayinstance \
     import JobPropertiesInstance
+from continuousresource.probleminstances.jumppointinstance \
+    import JumpPointInstance
 from continuousresource.mathematicalprogramming.mipmodels \
-    import ContinuousResourceMIPPlus
+    import JobPropertiesContinuousMIPPlus
 
 
 @click.command(context_settings=dict(help_option_names=['-h', '--help']))
@@ -107,7 +109,7 @@ def main(format, path, output_dir, label):
             with open(os.path.join(output_dir, instance_name,
                                    "cplex.log"), "w") as cplexlog:
                 t_start = time.perf_counter()
-                mip = ContinuousResourceMIPPlus(
+                mip = JobPropertiesContinuousMIPPlus(
                     instance,
                     f"{partial_label}_cont_mip",
                 )

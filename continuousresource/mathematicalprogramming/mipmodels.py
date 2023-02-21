@@ -275,7 +275,7 @@ class TimeIndexedNoDeadline(JumpPointMIP):
         print("Total profit = ", pulp.value(self._problem.objective))
 
 
-class ContinuousResourceMIP(MIP):
+class JobPropertiesContinuousMIP(MIP):
     """Class implementing a Mixed Integer Linear Programming model for a
     resource scheduling problem with continuous time and resource.
 
@@ -512,7 +512,7 @@ class ContinuousResourceMIP(MIP):
         print("Total profit = ", self._problem.objective_value)
 
 
-class ContinuousResourceMIPPlus(ContinuousResourceMIP):
+class JobPropertiesContinuousMIPPlus(JobPropertiesContinuousMIP):
     """Class implementing a Mixed Integer Linear Programming model for a
     resource scheduling problem with continuous time and resource.
     Extends its parent by adding a number of (redundant) constraints on
