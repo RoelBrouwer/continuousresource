@@ -20,29 +20,17 @@ class MIP(ABC):
         Label or name for the (solved) instance. Be sure to use one that
         is sufficiently unique, to avoid conflicts or other unexpected
         behavior.
-    solver : {'glpk', 'gurobi', 'cplex'}
-        Legacy parameter. The current implementation only supports
-        CPLEX.
     """
-    def __init__(self, label, solver='cplex'):
-        self._solver = solver
-
+    def __init__(self, label):
         # Initialize problem
-        if solver == 'cplex':
-            self._problem = docplex.mp.model.Model(name=label)
-        else:
-            raise NotImplementedError
+        self._problem = docplex.mp.model.Model(name=label)
 
     @property
     def problem(self):
         return self._problem
 
-    @property
-    def solver(self):
-        return self._solver
-
     def solve(self, timelimit=None, threads=1):
-        """Solve the LP.
+        """Solve the MIP.
 
         Parameters
         ----------
@@ -50,23 +38,20 @@ class MIP(ABC):
             Optional value indicating the timelimit set on solving the
             problem. By default, no timelimit is enforced.
         threads : int
-            Optional value indicating the number of threats that the
+            Optional value indicating the number of threads that the
             solver is allowed to use. Any value below 1 is considered to
             mean no limit is imposed, any positive value will be passed
             as an upper bound on the number of global threads to the
             solver.
         """
-        if self._solver == 'cplex':
-            self._problem.set_time_limit(timelimit)
-            if threads < 1:
-                threads = 0
-            self._problem.context.cplex_parameters.threads = threads
-            return self._problem.solve()
-        else:
-            raise NotImplementedError
+        self._problem.set_time_limit(timelimit)
+        if threads < 1:
+            threads = 0
+        self._problem.context.cplex_parameters.threads = threads
+        return self._problem.solve()
 
     def relax_problem(self):
-        """Relax all decision variables in the LP. All integer variables
+        """Relax all decision variables in the MIP. All integer variables
         (including binary) will be turned into continuous variables.
         """
         self._problem = LinearRelaxer.make_relaxed_model(self._problem)
@@ -94,12 +79,9 @@ class JobPropertiesContinuousMIP(MIP):
         Label or name for the (solved) instance. Be sure to use one that
         is sufficiently unique, to avoid conflicts or other unexpected
         behavior.
-    solver : {'glpk', 'gurobi', 'cplex'}
-        Legacy parameter. The current implementation only supports
-        CPLEX.
     """
-    def __init__(self, instance, label, solver='cplex'):
-        super().__init__(label, solver)
+    def __init__(self, instance, label):
+        super().__init__(label)
 
         self._njobs = len(instance['jobs'])
         self._nevents = self._njobs * 2
@@ -334,8 +316,8 @@ class JobPropertiesContinuousMIPPlus(JobPropertiesContinuousMIP):
         is sufficiently unique, to avoid conflicts or other unexpected
         behavior.
     """
-    def __init__(self, instance, label, solver="cplex"):
-        super().__init__(instance, label, solver)
+    def __init__(self, instance, label):
+        super().__init__(instance, label)
         for j in range(self._njobs):
             # A1. Restrict processing time (upper limit) by lower bound
             if instance['jobs'][j, 1] > 0:
