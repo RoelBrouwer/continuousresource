@@ -109,7 +109,7 @@ class EventOrderBasedMIP(MIP):
         self._define_variable_arrays()
 
         # Add objective
-        self._set_objective()
+        self._set_objective(instance)
 
         # Event-based constraints
         for i in range(self._nevents):
@@ -633,7 +633,7 @@ class JobPropertiesContinuousMIP(EventOrderBasedMIP):
         self._cost = self._problem.sum(
             instance['jobs'][j, 5] * self._tvar[j * 2 + 1]
             + instance['jobs'][j, 6]
-            for j in range(self._nplannable)
+            for j in range(self._njobs)
         )
         self._problem.minimize(self._cost)
 
