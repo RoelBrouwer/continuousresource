@@ -109,7 +109,7 @@ def main(exportpath, exportformat, label):
                 for r in [25.0, 50.0, 100.0, 200.0]:
                     for i in range(4):
                         instance = JumpPointInstance.generate_instance(
-                            n, k, r, params=params[str(n)]
+                            n, r, k, params=params[str(n)]
                         )
 
                         # Squeeze instance into a format understood by
@@ -123,17 +123,17 @@ def main(exportpath, exportformat, label):
                         lp = FeasibilityWithoutLowerbound(
                             jobs,
                             instance['constants']['resource_availability'],
-                            f'{n}-{k}-{r}-{i}'
+                            f'{n}-{r}-{k}-{i}'
                         )
                         lp.initialize_problem()
                         feasible = lp.solve() is not None
 
                         csv.write(
-                            f'{n};{k};{r:.2f};{i};'
+                            f'{n};{r:.2f};{k};{i};'
                             f'{"1" if feasible else "0"}\n'
                         )
 
-                        inst_label = (f"{label}_n{n}k{k}r{r:.2f}i{i}")
+                        inst_label = (f"{label}_n{n}r{r:.2f}k{k}i{i}")
                         if exportformat in ['both', 'binary']:
                             path = os.path.join(exportpath, inst_label)
                             JumpPointInstance.to_binary(path, instance)

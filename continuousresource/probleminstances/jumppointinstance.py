@@ -151,7 +151,7 @@ class JumpPointInstance(BaseInstance):
             for key in instance['constants'].keys():
                 csv.write(f"{key};{instance['constants'][key]}\n")
 
-    def generate_instance(njobs, kjumppoints, resource_availability,
+    def generate_instance(njobs, resource_availability, kjumppoints,
                           params=None):
         """Generate a single instance of a specific type.
 
@@ -159,11 +159,11 @@ class JumpPointInstance(BaseInstance):
         ----------
         njobs : int
             Number of jobs in the generated instance.
-        kjumppoints : int
-            Number of jump points in the cost functions of each job.
         resource_availability : float
             The continuously available amount of resource in the
             instance.
+        kjumppoints : int
+            Number of jump points in the cost functions of each job.
         params : Dict
             Dictionary of parameters that can be used in generation. The
             following parameters are recognized:
