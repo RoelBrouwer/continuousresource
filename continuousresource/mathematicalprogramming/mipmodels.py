@@ -507,6 +507,56 @@ class EventOrderBasedMIP(MIP):
             ctname="Amount_of_successors"
         )
 
+    def add_warmstart(self, t_vars, p_vars, event_order):
+        """We assume indices to correspond.
+        """
+        # TODO: document and sanity checks
+        warmstart = self._problem.new_solution()
+
+        for i in range(len(self._tvar)):
+            warmstart.add_var_value(self._tvar[i], t_vars[i].solution_value)
+
+        for j in range(self._pvar.shape[0]):
+            for i in range(self._pvar.shape[1]):
+                if isinstance(p_vars[j, i], docplex.mp.dvar.Var):
+                    warmstart.add_var_value(self._pvar[j, i],
+                                            p_vars[j, i].solution_value)
+
+        for i in range(len(event_order)):
+            for i2 in range(len(event_order)):
+                if i == i2:
+                    continue
+                e1 = 2 * event_order[i, 1] + event_order[i, 0]
+                e2 = 2 * event_order[i2, 1] + event_order[i2, 0]
+                if i2 == i + 1:
+                    warmstart.add_var_value(self._bvar[e1, e2], 1)
+                else:
+                    warmstart.add_var_value(self._bvar[e1, e2], 0)
+                if i2 > i:
+                    warmstart.add_var_value(self._avar[e1, e2], 1)
+                else:
+                    warmstart.add_var_value(self._avar[e1, e2], 0)
+
+        self._problem.add_mip_start(warmstart)
+
+    def get_solution_csv(self):
+        (event_labels, event_idx, event_timing, resource_consumption) = \
+            time_and_resource_vars_to_human_readable_solution_cplex(
+                self._tvar, self._pvar
+            )
+        return solution_to_csv_string(event_labels, event_idx, event_timing,
+                                      resource_consumption)
+
+    def print_solution(self):
+        """Print a human readable version of the (current) solution.
+
+        Notes
+        -----
+        The current implementation is very minimal, only returning the
+        objective value.
+        """
+        print("Total profit = ", self._problem.objective_value)
+
 
 class JobPropertiesContinuousMIP(EventOrderBasedMIP):
     """Class implementing a Mixed Integer Linear Programming model for a
@@ -646,56 +696,6 @@ class JobPropertiesContinuousMIP(EventOrderBasedMIP):
             Dictionary containing the instance data.
         """
         return instance['jobs'][j, 2]
-
-    def add_warmstart(self, t_vars, p_vars, event_order):
-        """We assume indices to correspond.
-        """
-        # TODO: document and sanity checks
-        warmstart = self._problem.new_solution()
-
-        for i in range(len(self._tvar)):
-            warmstart.add_var_value(self._tvar[i], t_vars[i].solution_value)
-
-        for j in range(self._pvar.shape[0]):
-            for i in range(self._pvar.shape[1]):
-                if isinstance(p_vars[j, i], docplex.mp.dvar.Var):
-                    warmstart.add_var_value(self._pvar[j, i],
-                                            p_vars[j, i].solution_value)
-
-        for i in range(len(event_order)):
-            for i2 in range(len(event_order)):
-                if i == i2:
-                    continue
-                e1 = 2 * event_order[i, 1] + event_order[i, 0]
-                e2 = 2 * event_order[i2, 1] + event_order[i2, 0]
-                if i2 == i + 1:
-                    warmstart.add_var_value(self._bvar[e1, e2], 1)
-                else:
-                    warmstart.add_var_value(self._bvar[e1, e2], 0)
-                if i2 > i:
-                    warmstart.add_var_value(self._avar[e1, e2], 1)
-                else:
-                    warmstart.add_var_value(self._avar[e1, e2], 0)
-
-        self._problem.add_mip_start(warmstart)
-
-    def get_solution_csv(self):
-        (event_labels, event_idx, event_timing, resource_consumption) = \
-            time_and_resource_vars_to_human_readable_solution_cplex(
-                self._tvar, self._pvar
-            )
-        return solution_to_csv_string(event_labels, event_idx, event_timing,
-                                      resource_consumption)
-
-    def print_solution(self):
-        """Print a human readable version of the (current) solution.
-
-        Notes
-        -----
-        The current implementation is very minimal, only returning the
-        objective value.
-        """
-        print("Total profit = ", self._problem.objective_value)
 
 
 class JobPropertiesContinuousMIPPlus(JobPropertiesContinuousMIP):
