@@ -2,6 +2,7 @@ from abc import ABC
 from abc import abstractmethod
 import docplex.mp.model
 from docplex.mp.relax_linear import LinearRelaxer
+import math
 import numpy as np
 
 from continuousresource.mathematicalprogramming.utils \
@@ -106,7 +107,7 @@ class EventOrderBasedMIP(MIP):
         # following relation: a job j is represented by two events in the
         # order, at index i (start event) and i + 1 (completion event),
         # where i = j * 2. Any other events start from index 2n - 1.
-        self._define_variable_arrays()
+        self._define_variable_arrays(instance)
 
         # Add objective
         self._set_objective(instance)
@@ -542,7 +543,7 @@ class EventOrderBasedMIP(MIP):
     def get_solution_csv(self):
         (event_labels, event_idx, event_timing, resource_consumption) = \
             time_and_resource_vars_to_human_readable_solution_cplex(
-                self._tvar, self._pvar
+                self._tvar[:self._nplannable], self._pvar
             )
         return solution_to_csv_string(event_labels, event_idx, event_timing,
                                       resource_consumption)
@@ -582,7 +583,7 @@ class JobPropertiesContinuousMIP(EventOrderBasedMIP):
 
         super().__init__(instance, label)
 
-    def _define_variable_arrays(self):
+    def _define_variable_arrays(self, instance):
         """Defines the arrays organizing all decision variables in the
         model. Fills the following four private variables: `_pvar`
         (resources variables), `_tvar` (time variables), `_avar` (order
@@ -734,10 +735,156 @@ class JobPropertiesContinuousMIPPlus(JobPropertiesContinuousMIP):
 
 
 class JumpPointContinuousMIP(EventOrderBasedMIP):
+    """Class implementing a Mixed Integer Linear Programming model for a
+    resource scheduling problem with continuous time and resource.
+
+    Parameters
+    ----------
+    instance : Dict of ndarray
+        Dictionary containing the instance data.
+    label : str
+        Label or name for the (solved) instance. Be sure to use one that
+        is sufficiently unique, to avoid conflicts or other unexpected
+        behavior.
+    """
     def __init__(self, instance, label):
-        raise NotImplementedError
+        # Set some constants
+        self._njobs = len(instance['properties'])
+        self._kjumppoints = instance['jumppoints'].shape[1] - 1
+        self._nevents = self._njobs * (self._kjumppoints + 1)
+        self._nplannable = self._njobs * 2
+        self._resource = instance['constants']['resource_availability']
+        # TODO: fix to some sensible value
+        self._bigM = 100000
+
+        super().__init__(instance, label)
+
+    def _define_variable_arrays(self, instance):
+        """Defines the arrays organizing all decision variables in the
+        model. Fills the following four private variables: `_pvar`
+        (resources variables), `_tvar` (time variables), `_avar` (order
+        variables), `_bvar` (successor variables).
+        """
+        self._pvar = np.zeros(shape=(self._njobs, self._nplannable),
+                              dtype=object)
+        self._tvar = np.zeros(shape=(self._nevents),
+                              dtype=object)
+        self._avar = np.zeros(shape=(self._nevents, self._nevents),
+                              dtype=object)
+        self._bvar = np.zeros(shape=(self._nevents, self._nevents),
+                              dtype=object)
+
+        for j in range(self._njobs):
+            for i in range(self._nplannable):
+                self._pvar[j, i] = self._problem.continuous_var(
+                    name=f"p_{j},{i}",
+                    lb=0
+                )
+
+            # No job can recieve resources in the interval it completes
+            self._pvar[j, 2 * j + 1].ub = 0
+
+        for i in range(self._nevents):
+            if i < self._nplannable:
+                self._tvar[i] = self._problem.continuous_var(
+                    name=f"t_{i}",
+                    lb=0
+                )
+            else:
+                j = math.floor((i - self._nplannable) / (self._kjumppoints - 1))
+                k = (i - self._nplannable) % (self._kjumppoints - 1)
+                self._tvar[i] = instance['jumppoints'][j, k + 1]
+            for i2 in range(self._nevents):
+                if i != i2:
+                    self._avar[i, i2] = self._problem.binary_var(
+                        name=f"a_{i},{i2}"
+                    )
+                    self._bvar[i, i2] = self._problem.binary_var(
+                        name=f"b_{i},{i2}"
+                    )
+
+    def _set_objective(self, instance):
+        """Sets the objective of the MILP model. Stores the objective in
+        the private `_cost` variable.
+
+        Parameters
+        ----------
+        instance : Dict of ndarray
+            Dictionary containing the instance data.
+        """
+        self._cost = self._problem.sum(
+            instance['weights'][j, 0] +
+            self._problem.sum(
+                instance['weights'][j, k] *
+                self._avar[self._nplannable + (self._kjumppoints - 1) * j + k - 1, 2 * j + 1]
+                for k in range(1, self._kjumppoints)
+            )
+            for j in range(self._njobs)
+        )
+        self._problem.minimize(self._cost)
+
+    def _get_deadline(self, j, instance):
+        """Get the deadline of job `j`.
+
+        Parameters
+        ----------
+        j : int
+            Index of the job to get the deadline for.
+        instance : Dict of ndarray
+            Dictionary containing the instance data.
+        """
+        return instance['jumppoints'][j, -1]
+
+    def _get_release_time(self, j, instance):
+        """Get the release time of job `j`.
+
+        Parameters
+        ----------
+        j : int
+            Index of the job to get the release time for.
+        instance : Dict of ndarray
+            Dictionary containing the instance data.
+        """
+        return instance['jumppoints'][j, 0]
+
+    def _get_resource_requirement(self, j, instance):
+        """Get the resource requirement of job `j`.
+
+        Parameters
+        ----------
+        j : int
+            Index of the job to get the resource requirement for.
+        instance : Dict of ndarray
+            Dictionary containing the instance data.
+        """
+        return instance['properties'][j, 0]
+
+    def _get_lower_bound(self, j, instance):
+        """Get the lower bound of job `j`.
+
+        Parameters
+        ----------
+        j : int
+            Index of the job to get the lower bound for.
+        instance : Dict of ndarray
+            Dictionary containing the instance data.
+        """
+        return instance['properties'][j, 1]
+
+    def _get_upper_bound(self, j, instance):
+        """Get the upper bound of job `j`.
+
+        Parameters
+        ----------
+        j : int
+            Index of the job to get the upper bound for.
+        instance : Dict of ndarray
+            Dictionary containing the instance data.
+        """
+        return instance['properties'][j, 2]
 
 
 class JumpPointContinuousMIPPlus(JumpPointContinuousMIP):
     def __init__(self, instance, label):
-        raise NotImplementedError
+
+        super().__init__(instance, label)

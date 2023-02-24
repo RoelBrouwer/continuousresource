@@ -135,7 +135,7 @@ def main(format, model, timelimit, path, output_dir, label):
                 params = re.match(r'.*n(\d+)r(\d+.\d+)a([01])i(\d+)',
                                   instance_name)
             elif model == 'jumppoint':
-                params = re.match(r'.*n(\d+)r(\d+.\d+)k([01])i(\d+)',
+                params = re.match(r'.*n(\d+)r(\d+.\d+)k(\d+)i(\d+)',
                                   instance_name)
 
             with open(os.path.join(output_dir, instance_name,
