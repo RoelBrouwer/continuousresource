@@ -791,7 +791,8 @@ class JumpPointContinuousMIP(EventOrderBasedMIP):
                     lb=0
                 )
             else:
-                j = math.floor((i - self._nplannable) / (self._kjumppoints - 1))
+                j = math.floor((i - self._nplannable) /
+                               (self._kjumppoints - 1))
                 k = (i - self._nplannable) % (self._kjumppoints - 1)
                 self._tvar[i] = instance['jumppoints'][j, k + 1]
             for i2 in range(self._nevents):
@@ -816,7 +817,10 @@ class JumpPointContinuousMIP(EventOrderBasedMIP):
             instance['weights'][j, 0] +
             self._problem.sum(
                 instance['weights'][j, k] *
-                self._avar[self._nplannable + (self._kjumppoints - 1) * j + k - 1, 2 * j + 1]
+                self._avar[
+                    self._nplannable + (self._kjumppoints - 1) * j + k - 1,
+                    2 * j + 1
+                ]
                 for k in range(1, self._kjumppoints)
             )
             for j in range(self._njobs)
@@ -906,7 +910,8 @@ class JumpPointContinuousMIPPlus(JumpPointContinuousMIP):
             if instance['properties'][j, 1] > 0:
                 self._problem.add_constraint(
                     ct=self._tvar[2 * j + 1] - self._tvar[2 * j]
-                    - (instance['properties'][j, 0] / instance['properties'][j, 1]) <= 0,
+                    - (instance['properties'][j, 0] /
+                       instance['properties'][j, 1]) <= 0,
                     ctname=f"Processing_time_upper_limit_job_{j}"
                 )
 
@@ -914,6 +919,7 @@ class JumpPointContinuousMIPPlus(JumpPointContinuousMIP):
             if instance['properties'][j, 2] > 0:
                 self._problem.add_constraint(
                     ct=self._tvar[2 * j + 1] - self._tvar[2 * j]
-                    - (instance['properties'][j, 0] / instance['properties'][j, 2]) >= 0,
+                    - (instance['properties'][j, 0] /
+                       instance['properties'][j, 2]) >= 0,
                     ctname=f"Processing_time_lower_limit_job_{j}"
                 )
