@@ -11,12 +11,14 @@ import numpy as np
 
 from continuousresource.probleminstances.jobarrayinstance \
     import JobPropertiesInstance
+# from continuousresource.probleminstances.jumppointinstance \
+#     import JumpPointInstance
 from continuousresource.mathematicalprogramming.linprog \
     import OrderBasedSubProblemWithSlack
 from continuousresource.localsearch.localsearch \
     import simulated_annealing, simulated_annealing_verbose
-from continuousresource.localsearch.searchspace \
-    import SearchSpaceCombined
+from continuousresource.localsearch.searchspace_jobarray \
+    import JobArraySearchSpaceCombined
 
 
 @click.command(context_settings=dict(help_option_names=['-h', '--help']))
@@ -86,7 +88,8 @@ def main(format, path, output_dir, label, verbose):
     """
     # Vary parameters here
     model_class = OrderBasedSubProblemWithSlack
-    sp_class = SearchSpaceCombined
+    sp_class = JobArraySearchSpaceCombined
+    instance_class = JobPropertiesInstance
     slackpenalties = [5, 5]
     sa_params = {
         'initial_temperature_func': (lambda n: 200 * n),
@@ -105,11 +108,13 @@ def main(format, path, output_dir, label, verbose):
         os.mkdir(output_dir)
 
     run_on_instances(format, path, output_dir, label, verbose, sa_params,
-                     search_space, model_class, slackpenalties)
+                     search_space, model_class, instance_class,
+                     slackpenalties)
 
 
 def run_on_instances(format, path, output_dir, label, verbose, sp,
-                     search_space, model_class, slackpenalties=None):
+                     search_space, model_class, instance_class,
+                     slackpenalties=None):
     """Perform simulated annealing runs for all instances within the
     given directory.
 
@@ -137,21 +142,27 @@ def run_on_instances(format, path, output_dir, label, verbose, sp,
               maximum number of iterations.
     search_space : SearchSpace
         Search space used in simulated annealing.
-    model_class : str
+    model_class : type
         Name of the class used to model the LP subproblem in.
+    instance_class : type
+        Name of the class representing an instance.
     slackpenalties : list of float
         List of penalty coefficients for slack variables.
     """
     with open(os.path.join(output_dir,
                            f"{label}_summary.csv"), "w") as csv:
+        if instance_class == JobPropertiesInstance:
+            third_param = 'a'
+        elif instance_class == JumpPointInstance:
+            third_param = 'k'
         csv.write(
-            'n;r;a;i;T_init;alfa;alfa_period;stop;#iter;init_time;init_score;'
-            'time;best;slack\n'
+            f'n;r;{third_param};i;T_init;alfa;alfa_period;stop;#iter;'
+            'init_time;init_score;time;best;slack\n'
         )
         for inst in os.listdir(path):
             if format == 'binary':
                 if inst.endswith(".npz"):
-                    instance = JobPropertiesInstance.from_binary(
+                    instance = instance_class.from_binary(
                         os.path.join(path, inst)
                     )
                     instance_name = inst[:-4]
@@ -159,7 +170,7 @@ def run_on_instances(format, path, output_dir, label, verbose, sp,
                     continue
             elif format == 'csv':
                 if os.path.isdir(os.path.join(path, inst)):
-                    instance = JobPropertiesInstance.from_csv(
+                    instance = instance_class.from_csv(
                         os.path.join(path, inst)
                     )
                     instance_name = inst
@@ -173,14 +184,22 @@ def run_on_instances(format, path, output_dir, label, verbose, sp,
             os.mkdir(os.path.join(output_dir, instance_name))
 
             partial_label = f"{label}_{instance_name}"
-            params = re.match(r'.*n(\d+)r(\d+.\d+)a?([01])?i?(\d+)?',
-                              instance_name)
-
-            dummy_eventlist = np.array([
-                [e, j]
-                for j in range(len(instance['jobs']))
-                for e in [0, 1]
-            ])
+            if instance_class == JobPropertiesInstance:
+                params = re.match(r'.*n(\d+)r(\d+.\d+)a?([01])?i?(\d+)?',
+                                  instance_name)
+                dummy_eventlist = np.array([
+                    [e, j]
+                    for j in range(len(instance['jobs']))
+                    for e in [0, 1]
+                ])
+            elif instance_class == JumpPointInstance:
+                params = re.match(r'.*n(\d+)r(\d+.\d+)k(\d+)i(\d+)',
+                                  instance_name)
+                dummy_eventlist = np.array([
+                    [e, j]
+                    for j in range(len(instance['properties']))
+                    for e in range(instance['jumppoints'].shape[1])
+                ])
 
             sp['alfa_period'] = sp['alfa_period_func'](int(params.group(1)))
             sp['cutoff'] = sp['cutoff_func'](int(params.group(1)))
@@ -188,12 +207,15 @@ def run_on_instances(format, path, output_dir, label, verbose, sp,
                 sp['initial_temperature_func'](int(params.group(1)))
 
             t_start = time.perf_counter()
-            sol_init_time, sol_init_score = \
-                search_space.generate_initial_solution(
-                    model_class, dummy_eventlist, instance['jobs'],
-                    instance['constants']['resource_availability'],
-                    slackpenalties, partial_label
-                )
+            if instance_class == JobPropertiesInstance:
+                sol_init_time, sol_init_score = \
+                    search_space.generate_initial_solution(
+                        model_class, dummy_eventlist, instance['jobs'],
+                        instance['constants']['resource_availability'],
+                        slackpenalties, partial_label
+                    )
+            elif instance_class == JumpPointInstance:
+                raise NotImplementedError
 
             if verbose:
                 iters, solution = simulated_annealing_verbose(
