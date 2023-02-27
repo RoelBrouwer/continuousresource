@@ -11,10 +11,10 @@ import numpy as np
 
 from continuousresource.probleminstances.jobarrayinstance \
     import JobPropertiesInstance
-# from continuousresource.probleminstances.jumppointinstance \
-#     import JumpPointInstance
+from continuousresource.probleminstances.jumppointinstance \
+    import JumpPointInstance
 from continuousresource.mathematicalprogramming.linprog \
-    import OrderBasedSubProblemWithSlack
+    import LPWithSlack, OrderBasedSubProblemWithSlack
 from continuousresource.localsearch.localsearch \
     import simulated_annealing, simulated_annealing_verbose
 from continuousresource.localsearch.searchspace_jobarray \
@@ -264,7 +264,8 @@ Total time (s): {t_end - t_start}
             )
 
             total_slack = 0
-            if solution.model.with_slack and len(solution.slack) > 0:
+            if isinstance(solution.model, LPWithSlack) \
+               and len(solution.slack) > 0:
                 for (slack_label, value, weight) in solution.slack:
                     total_slack += value * weight
 

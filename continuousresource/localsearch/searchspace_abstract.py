@@ -1,11 +1,12 @@
 from abc import ABC
 from abc import abstractmethod
 import copy
-import math
 import numpy as np
 import time
 
 from .utils import sanitize_search_space_params
+from continuousresource.mathematicalprogramming.linprog \
+    import LPWithSlack
 
 
 class SearchSpace(ABC):
@@ -324,7 +325,7 @@ class SearchSpaceState():
         if sol is not None:
             self._score = sol.get_objective_value()
             self._schedule = self._lp_model.get_schedule()
-            if self._lp_model.with_slack:
+            if isinstance(self._lp_model, LPWithSlack):
                 self._slack = self._lp_model.compute_slack()
             else:
                 self._slack = []
