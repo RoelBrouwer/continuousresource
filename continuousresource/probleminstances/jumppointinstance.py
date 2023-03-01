@@ -295,7 +295,10 @@ class JumpPointInstance(BaseInstance):
             )
             for j in range(njobs)
         ]).round(decimals=2)
+
+        # Sort weights and make them cumulative
         weights.sort()
+        weights[1:] = np.diff(weights)
 
         return {
             'properties': properties,
