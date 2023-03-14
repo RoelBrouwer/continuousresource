@@ -13,8 +13,8 @@ from continuousresource.probleminstances.jobarrayinstance \
     import JobPropertiesInstance
 from continuousresource.probleminstances.jumppointinstance \
     import JumpPointInstance
-from continuousresource.mathematicalprogramming.linprog \
-    import LPWithSlack, OrderBasedSubProblemWithSlack
+from continuousresource.mathematicalprogramming.abstract \
+    import LPWithSlack
 from continuousresource.localsearch.localsearch \
     import simulated_annealing, simulated_annealing_verbose
 from continuousresource.localsearch.searchspace_jobarray \
@@ -25,7 +25,7 @@ from continuousresource.localsearch.searchspace_jobarray \
 @click.option(
     '--format',
     '-f',
-    'format',
+    'input_format',
     required=True,
     type=click.Choice(['binary', 'csv'], case_sensitive=False),
     help="Input format of the provided instances."
@@ -69,13 +69,13 @@ from continuousresource.localsearch.searchspace_jobarray \
     is_flag=True,
     help="Log extensive information on the runs."
 )
-def main(format, path, output_dir, label, verbose):
+def main(input_format, path, output_dir, label, verbose):
     """Perform simulated annealing runs for all instances within the
     given directory.
 
     Parameters
     ----------
-    format : {'binary', 'csv'}
+    input_format : {'binary', 'csv'}
         Input format of the provided instances.
     path : str
         Path to the folder containing the instances.
@@ -87,40 +87,38 @@ def main(format, path, output_dir, label, verbose):
         Log extensive information on the runs.
     """
     # Vary parameters here
-    model_class = OrderBasedSubProblemWithSlack
     sp_class = JobArraySearchSpaceCombined
     instance_class = JobPropertiesInstance
     slackpenalties = [5, 5]
     sa_params = {
-        'initial_temperature_func': (lambda n: 200 * n),
+        'initial_temperature_func': (lambda n: n),
         'alfa': 0.95,
-        'alfa_period_func': (lambda n: (2 * n - 1) * 2),
+        'alfa_period_func': (lambda n: (2 * n - 1) * 4),
         'cutoff_func': (lambda n: (2 * n - 1) * 8 * 50)
     }
-    spp = {
+    sp_params = {
         'infer_precedence': True,
         'fracs': {"swap": 0.75, "move": 0.15, "movepair": 0.1},
         'start_solution': "greedy"
     }
-    search_space = sp_class(spp)
 
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
 
-    run_on_instances(format, path, output_dir, label, verbose, sa_params,
-                     search_space, model_class, instance_class,
+    run_on_instances(input_format, path, output_dir, label, verbose,
+                     sa_params, sp_class, sp_params, instance_class,
                      slackpenalties)
 
 
-def run_on_instances(format, path, output_dir, label, verbose, sp,
-                     search_space, model_class, instance_class,
+def run_on_instances(input_format, path, output_dir, label, verbose,
+                     sa_params, sp_class, sp_params, instance_class,
                      slackpenalties=None):
     """Perform simulated annealing runs for all instances within the
     given directory.
 
     Parameters
     ----------
-    format : {'binary', 'csv'}
+    input_format : {'binary', 'csv'}
         Input format of the provided instances.
     path : str
         Path to the folder containing the instances.
@@ -130,7 +128,7 @@ def run_on_instances(format, path, output_dir, label, verbose, sp,
         Sufficiently unique label or name for the run.
     verbose : bool
         Log extensive information on the runs.
-    sp : dict
+    sa_params : dict
         Dictionary with values for the parameters used to tune the
         simulated annealing approach, with the following keys:
             - `initial_temperature_func`: function (lambda n) that
@@ -140,15 +138,24 @@ def run_on_instances(format, path, output_dir, label, verbose, sp,
               number of iterations between cooling events;
             - `cutoff_func`: function (lambda n) that computes the
               maximum number of iterations.
-    search_space : SearchSpace
+    sp_class : type
         Search space used in simulated annealing.
-    model_class : type
-        Name of the class used to model the LP subproblem in.
+    sp_params : dict
+        Dictionary containing parameters defining the search space, with
+        the following keys:
+            - `infer_precedence` (bool): Flag indicating whether to infer
+              and continuously check (implicit) precedence relations.
+            - `fracs` (dict of float): Dictionary indicating the
+              probability of selecting each neighborhood operator.
+            - `start_solution` (str): String indicating the method of
+              generating a starting solution. Either "random" or
+              "greedy".
     instance_class : type
         Name of the class representing an instance.
     slackpenalties : list of float
         List of penalty coefficients for slack variables.
     """
+    # TODO: initialize searchspace
     with open(os.path.join(output_dir,
                            f"{label}_summary.csv"), "w") as csv:
         if instance_class == JobPropertiesInstance:
@@ -160,7 +167,7 @@ def run_on_instances(format, path, output_dir, label, verbose, sp,
             'init_time;init_score;time;best;slack\n'
         )
         for inst in os.listdir(path):
-            if format == 'binary':
+            if input_format == 'binary':
                 if inst.endswith(".npz"):
                     instance = instance_class.from_binary(
                         os.path.join(path, inst)
@@ -168,7 +175,7 @@ def run_on_instances(format, path, output_dir, label, verbose, sp,
                     instance_name = inst[:-4]
                 else:
                     continue
-            elif format == 'csv':
+            elif input_format == 'csv':
                 if os.path.isdir(os.path.join(path, inst)):
                     instance = instance_class.from_csv(
                         os.path.join(path, inst)
@@ -180,6 +187,9 @@ def run_on_instances(format, path, output_dir, label, verbose, sp,
                 raise ValueError("Unsupported input format, must be binary or"
                                  " csv.")
 
+            # Add slackpenalties information to the instance
+            instance['constants']['slackpenalties'] = slackpenalties
+
             # Make output_dir for this instance
             os.mkdir(os.path.join(output_dir, instance_name))
 
@@ -187,44 +197,31 @@ def run_on_instances(format, path, output_dir, label, verbose, sp,
             if instance_class == JobPropertiesInstance:
                 params = re.match(r'.*n(\d+)r(\d+.\d+)a?([01])?i?(\d+)?',
                                   instance_name)
-                dummy_eventlist = np.array([
-                    [e, j]
-                    for j in range(len(instance['jobs']))
-                    for e in [0, 1]
-                ])
             elif instance_class == JumpPointInstance:
                 params = re.match(r'.*n(\d+)r(\d+.\d+)k(\d+)i(\d+)',
                                   instance_name)
-                dummy_eventlist = np.array([
-                    [e, j]
-                    for j in range(len(instance['properties']))
-                    for e in range(instance['jumppoints'].shape[1])
-                ])
 
-            sp['alfa_period'] = sp['alfa_period_func'](int(params.group(1)))
-            sp['cutoff'] = sp['cutoff_func'](int(params.group(1)))
-            sp['initial_temperature'] = \
-                sp['initial_temperature_func'](int(params.group(1)))
+            # Get parameters for the SA
+            sa_params['alfa_period'] = \
+                sa_params['alfa_period_func'](int(params.group(1)))
+            sa_params['cutoff'] = \
+                sa_params['cutoff_func'](int(params.group(1)))
+            sa_params['initial_temperature'] = \
+                sa_params['initial_temperature_func'](int(params.group(1)))
 
             t_start = time.perf_counter()
-            if instance_class == JobPropertiesInstance:
-                sol_init_time, sol_init_score = \
-                    search_space.generate_initial_solution(
-                        model_class, dummy_eventlist, instance['jobs'],
-                        instance['constants']['resource_availability'],
-                        slackpenalties, partial_label
-                    )
-            elif instance_class == JumpPointInstance:
-                raise NotImplementedError
+
+            # Initialize the search space
+            search_space = sp_class(instance, sp_params)
 
             if verbose:
                 iters, solution = simulated_annealing_verbose(
-                    search_space, sp,
+                    search_space, sa_params,
                     output_dir=os.path.join(output_dir, instance_name)
                 )
             else:
                 iters, solution = simulated_annealing(
-                    search_space, sp
+                    search_space, sa_params
                 )
 
             t_end = time.perf_counter()
@@ -232,7 +229,7 @@ def run_on_instances(format, path, output_dir, label, verbose, sp,
             # Print solution (eventlist) to file
             np.savetxt(os.path.join(output_dir, instance_name,
                                     f"{partial_label}_solution.txt"),
-                       solution.eventorder)
+                       solution.eventlist)
             with open(os.path.join(output_dir, instance_name,
                                    f"{partial_label}_solution.txt"),
                       "a") as txt:
@@ -246,7 +243,7 @@ def run_on_instances(format, path, output_dir, label, verbose, sp,
                       "w") as txt:
                 txt.write(
                     f"""
-Start solution (s): {sol_init_time}
+Start solution (s): {search_space.timings["initial_solution"]}
 Total time (s): {t_end - t_start}
                     """
                 )
@@ -264,19 +261,20 @@ Total time (s): {t_end - t_start}
             )
 
             total_slack = 0
-            if isinstance(solution.model, LPWithSlack) \
+            if isinstance(search_space.lp, LPWithSlack) \
                and len(solution.slack) > 0:
                 for (slack_label, value, weight) in solution.slack:
                     total_slack += value * weight
 
             # Build-up CSV-file
-            # TODO: fix if either a or i is not included in filename
             csv.write(
                 f'{params.group(1)};{params.group(2)};{params.group(3)};'
-                f'{params.group(4)};{sp["initial_temperature"]};{sp["alfa"]};'
-                f'{sp["alfa_period"]};{sp["cutoff"]};{iters};{sol_init_time};'
-                f'{sol_init_score};{t_end - t_start};{solution.score};'
-                f'{total_slack}\n'
+                f'{params.group(4)};{sa_params["initial_temperature"]};'
+                f'{sa_params["alfa"]};{sa_params["alfa_period"]};'
+                f'{sa_params["cutoff"]};{iters};'
+                f'{search_space.timings["initial_solution"]};'
+                f'{search_space.initial.score};{t_end - t_start};'
+                f'{solution.score};{total_slack}\n'
             )
 
             # Move all files with names starting with the label

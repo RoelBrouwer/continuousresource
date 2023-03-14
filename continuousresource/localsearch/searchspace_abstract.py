@@ -2,11 +2,8 @@ from abc import ABC
 from abc import abstractmethod
 import copy
 import numpy as np
-import time
 
 from .utils import sanitize_search_space_params
-from continuousresource.mathematicalprogramming.linprog \
-    import LPWithSlack
 
 
 class SearchSpace(ABC):
@@ -26,16 +23,23 @@ class SearchSpace(ABC):
               generating a starting solution. Either `random` or
               `greedy`.
     """
-    def __init__(self, params=None):
-        self._params = sanitize_search_space_params(params)
-        self._current_solution = None
-        self._best_solution = None
+    def __init__(self, instance, params=None):
         self._label = "superclass"
         self._timings = {
             "initial_solution": 0,
             "model_update": 0,
             "lp_solve": 0
         }
+
+        # Set parameters
+        self._params = sanitize_search_space_params(params)
+
+        # Find and set precedences
+        self._precedences = self._find_precedences(instance,
+                                                   params['infer_precedence'])
+
+        # Generate an initial solution
+        self._generate_initial_solution(instance)
 
     @property
     def best(self):
@@ -48,6 +52,14 @@ class SearchSpace(ABC):
     @property
     def current(self):
         return self._current_solution
+
+    @property
+    def initial(self):
+        return self._initial_solution
+
+    @property
+    def lp(self):
+        return self._lp_model
 
     @property
     def name(self):
@@ -73,104 +85,65 @@ class SearchSpace(ABC):
         """
         return self._timings
 
-    def generate_initial_solution(self, model_class, eventlist,
-                                  *args, **kwargs):
-        """Generates an initial solution within the search space and sets
-        the value of self._current_solution accordingly.
+    @abstractmethod
+    def _find_precedences(self, instance, infer_precedence):
+        """Construct an array indicating precedence relations between
+        events.
 
         Parameters
         ----------
-        model_class : str
-            Class name of the class implementing the state model.
-        eventlist : ndarray
-            Two-dimensional (|E| x 2) array representing the events in the
-            problem, where the first column contains an integer indicating
-            the event type (0 for start, 1 for completion) and the second
-            column the associated job ID.
-        *args :
-            Should contain exactly the (non-keyword) arguments required
-            by the constructor of `model_class`, other than `eventlist`.
-        **kwargs :
-            Should contain exactly the keyword arguments required by the
-            constructor of `model_class`, other than `eventlist`.
+        instance : Dict of ndarray
+            Dictionary containing the instance data.
+        infer_precedence : bool
+            Flag indicating whether to infer and continuously check
+            (implicit) precedence relations.
+
+        Returns
+        -------
+        ndarray
+            Two dimensional (|E| x |E|) array listing (inferred)
+            precedence relations between events. If the entry at position
+            [i, j] is True, this means that i has to come before j.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def _generate_initial_solution(self, instance):
+        """Generates an initial solution within the search space and sets
+        the value of `_lp_model`, `_best_solution`, `_current_solution`
+        and `_initial_solution`  accordingly.
+
+        Parameters
+        ----------
+        instance : Dict of ndarray
+            Dictionary containing the instance data.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def _compute_score(self):
+        """Compute the (exact) score of the current solution
 
         Returns
         -------
         float
-            Timing (in seconds) of the actual initial solution generation,
-        """
-        initial = SearchSpaceState(self, eventlist)
-        initial.create_model(model_class, eventlist, *args, **kwargs)
-        self._precedences = \
-            initial.model.find_precedences(self._params['infer_precedence'])
-        t_start = time.perf_counter()
-        if self._params['start_solution'] == "greedy":
-            initial.model.generate_initial_solution()
-        elif self._params['start_solution'] == "random":
-            initial.model.generate_random_solution(self._precedences)
-        t_end = time.perf_counter()
-        initial.model.initialize_problem()
-        initial.eventorder = initial.model.event_list
-        self._current_solution = initial
-        initial.compute_score()
-        self._best_solution = copy.copy(initial)
-        self._best_solution.score = initial.score
-        self._best_solution.slack = initial.slack
-        self._timings["initial_solution"] = t_end - t_start
-        return t_end - t_start, initial.score
-
-    def compute_search_space_reductions(self):
-        """Eliminate parts of the search space by looking at implicit
-        precedence constraints in the data.
+            Score of the current solution
         """
         raise NotImplementedError
 
-    def get_random_order(self, prec_matrix=None):
+    @abstractmethod
+    def get_random_order(self):
         """Returns a random event order that respects (precomputed)
         precedence relations.
-        Parameters
-        ----------
-        eventlist : list of list of int
-            List of lists of length two, representing the events in the
-            eventlist being built. First element in each lists is the
-            event type, second element the job ID.
-        prec_matrix : ndarray
-            Two-dimensional array (|E| x |E|) representing the precedence
-            relations between events. A 1 on position [i, j] means that i
-            comes before j. I.e., only if the sum of column i is 0, the
-            event can occur freely.
+
         Returns
         -------
-        list of list of int
-            List of lists of length two, representing the events in the
-            eventlist. First element in each lists is the event type,
-            second element the job ID.
+        ndarray
+            Two-dimensional (|E| x 2) array representing the events in the
+            problem, where the first column contains an integer indicating
+            the event type and the second column the associated job ID.
         """
-        if self._current_solution is None:
-            raise RuntimeError("Please initialize a model first")
-
-        if prec_matrix is None:
-            prec_matrix = self._precedences
-
-        eventlist = self._current_solution.model.event_list
-
-        random_list = [
-            [0, 0] for i in range(len(eventlist))
-        ]
-
-        for i in range(len(eventlist)):
-            # Indices of events that are "precedent-free"
-            opt = np.where(np.all(~prec_matrix, axis=0))[0]
-            if (len(opt) > 0):
-                selected = np.random.choice(opt)
-                random_list[i] = eventlist[selected]
-                prec_matrix = np.delete(prec_matrix, selected, 0)
-                prec_matrix = np.delete(prec_matrix, selected, 1)
-                del eventlist[selected]
-            else:
-                return None
-
-        return random_list
+        raise NotImplementedError
 
     @abstractmethod
     def get_neighbor(self, temperature):
@@ -219,29 +192,31 @@ class SearchSpaceState():
 
     Parameters
     ----------
-    belongs_to : SearchSpace
-        Search space wherein this object represents a state.
-    eventorder : ndarray
-        Two-dimensional (|E| x 2) array representing the events in
-        the problem, where the first column contains an integer
-        indicating the event type (0 for start, 1 for completion) and
-        the second column the associated job ID.
+        instance : Dict of ndarray
+            Dictionary containing the instance data.
     """
-    def __init__(self, belongs_to, eventorder):
-        self._searchspace = belongs_to
-        self._eventorder = eventorder
+    def __init__(self, instance):
+        self._instance = instance
         self._score = np.inf
         self._slack = []
-        self._lp_model = None
 
     def __copy__(self):
         """Override copy method to make copies of some attributes and
         reset others.
         """
-        new_state = SearchSpaceState(self._searchspace,
-                                     copy.copy(self._eventorder))
-        new_state.model = self._lp_model
-        return new_state
+        return self.__class__(copy.deepcopy(self._instance))
+
+    @property
+    def instance(self):
+        """Dict of ndarray : Dictionary containing the instance data."""
+        return self._instance
+
+    @instance.setter
+    def instance(self, instance):
+        """Manually set the value of the instance attribute for this
+        state. Use with caution.
+        """
+        self._instance = instance
 
     @property
     def score(self):
@@ -273,62 +248,21 @@ class SearchSpaceState():
         self._slack = slack
 
     @property
-    def model(self):
-        """OrderBasedSubProblem : Object containing the LP model and
-        associated functions."""
-        return self._lp_model
+    def eventlist(self):
+        return self._instance['eventlist']
 
-    @model.setter
-    def model(self, model):
-        """Manually set the value of the model attribute for this state.
-        Note that this does not make a copy, it just stores a reference.
-        Use with caution."""
-        self._lp_model = model
-
-    @property
-    def eventorder(self):
-        return self._eventorder
-
-    @eventorder.setter
-    def eventorder(self, eventorder):
+    @eventlist.setter
+    def eventlist(self, eventlist):
         """Manually set the value of the eventorder attribute for this
         state. Use with caution."""
-        self._eventorder = eventorder
+        self._instance['eventlist'] = eventlist
 
-    def create_model(self, model_class, *args, **kwargs):
-        """Create an (LP) model for the current state.
+    @property
+    def eventmap(self):
+        return self._instance['eventmap']
 
-        Parameters
-        ----------
-        model_class : str
-            Class name of the class implementing the state model.
-        *args :
-            Should contain exactly the (non-keyword) arguments required
-            by the constructor of `model_class`.
-        **kwargs :
-            Should contain exactly the keyword arguments required by the
-            constructor of `model_class`.
-        """
-        self._lp_model = model_class(*args, **kwargs)
-
-    def compute_score(self):
-        """Solve the underlying LP and set the score equal to its
-        objective value, if a feasible solution exists.
-        """
-        if self._lp_model is None:
-            raise RuntimeError("A score can only be computed if a model has"
-                               " been specified for this state.")
-        t_start = time.perf_counter()
-        sol = self._lp_model.solve()
-        t_end = time.perf_counter()
-        self._searchspace.timings["lp_solve"] += t_end - t_start
-        if sol is not None:
-            self._score = sol.get_objective_value()
-            self._schedule = self._lp_model.get_schedule()
-            if isinstance(self._lp_model, LPWithSlack):
-                self._slack = self._lp_model.compute_slack()
-            else:
-                self._slack = []
-        else:
-            self._score = np.inf
-            self._slack = []
+    @eventmap.setter
+    def eventmap(self, eventmap):
+        """Manually set the value of the eventmap attribute for this
+        state. Use with caution."""
+        self._instance['eventmap'] = eventmap
