@@ -5,44 +5,44 @@ import docplex.mp.model
 import math
 import numpy as np
 
-from continuousresource.mathematicalprogramming.linprog \
-    import OrderBasedSubProblem
+from continuousresource.mathematicalprogramming.eventorder \
+    import EventOrderLinearModel
 
 
-class FeasibilityWithoutLowerbound(OrderBasedSubProblem):
+class FeasibilityWithoutLowerbound(EventOrderLinearModel):
     """Class implementing an LP that checks instances for feasibility,
     ignoring constraints on the lower bounds.
 
     Parameters
     ----------
-    jobs : ndarray
-        Two-dimensional (n x 7) array containing job properties:
-            - 0: resource requirement (E_j);
-            - 1: resource lower bound (P^-_j);
-            - 2: resource upper bound (P^+_j);
-            - 3: release date (r_j);
-            - 4: deadline (d_j);
-            - 5: weight (W_j);
-            - 6: objective constant (B_j).
-    resource : float
-        Amount of resource available per time unit. Required to be
-        constant for now.
+    instance : Dict of ndarray
+        Dictionary containing the instance data, with the following keys:
+            - `jobs`: two-dimensional (n x 7) array containing job
+              properties:
+                - 0: resource requirement (E_j);
+                - 1: resource lower bound (P^-_j);
+                - 2: resource upper bound (P^+_j);
+                - 3: release date (r_j);
+                - 4: deadline (d_j);
+                - 5: weight (W_j);
+                - 6: objective constant (B_j).
+            - `resource`: Amount of resource available per time unit
+              (float).
     label : str
         Label or name for the (solved) instance. Be sure to use one that
         is sufficiently unique, to avoid conflicts or other unexpected
         behavior.
-    solver : {'cplex'}
-        The solver that will be used to solve the LP constructed from the
-        provided instance. Currently only CPLEX is supported.
     """
-    def __init__(self, jobs, resource, label, solver='cplex'):
+    def __init__(self, jobs, resource, label):
+        raise NotImplementedError
+        # TODO: update it to the new structure
         # First, we construct an eventlist
         events = self._construct_event_list(jobs)
-        eventlist = events[:, :2].astype(int)
+        instance['eventlist'] = events[:, :2].astype(int)
         self._times = events[:, 2]
-        super().__init__(eventlist, jobs, resource, label, solver)
+        super().__init__(eventlist, instance, label)
 
-    def initialize_problem(self):
+    def _initialize_model(self, instance):
         """...
         """
         # Create variables

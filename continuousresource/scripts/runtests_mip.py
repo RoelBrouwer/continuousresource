@@ -12,9 +12,9 @@ from continuousresource.probleminstances.jobarrayinstance \
     import JobPropertiesInstance
 from continuousresource.probleminstances.jumppointinstance \
     import JumpPointInstance
-from continuousresource.mathematicalprogramming.mipmodels \
+from continuousresource.mathematicalprogramming.eventorder \
     import JobPropertiesContinuousMIPPlus
-from continuousresource.mathematicalprogramming.mipmodels \
+from continuousresource.mathematicalprogramming.eventorder \
     import JumpPointContinuousMIPPlus
 
 
@@ -22,7 +22,7 @@ from continuousresource.mathematicalprogramming.mipmodels \
 @click.option(
     '--format',
     '-f',
-    'format',
+    'input_format',
     required=True,
     type=click.Choice(['binary', 'csv'], case_sensitive=False),
     help="Input format of the provided instances."
@@ -76,12 +76,12 @@ from continuousresource.mathematicalprogramming.mipmodels \
     default=datetime.datetime.now().strftime("%Y%m%d_%H%M%S%f"),
     help="Sufficiently unique label or name for the run."
 )
-def main(format, model, timelimit, path, output_dir, label):
+def main(input_format, model, timelimit, path, output_dir, label):
     """Run the MIP model over all instances within the given directory.
 
     Parameters
     ----------
-    format : {'binary', 'csv'}
+    input_format : {'binary', 'csv'}
         Input format of the provided instances.
     model : {'singleweight', 'jumppoint'}
         The type of the provided instances.
@@ -107,7 +107,7 @@ def main(format, model, timelimit, path, output_dir, label):
                            f"{label}_summary.csv"), "w") as csv:
         csv.write(csv_header)
         for inst in os.listdir(path):
-            if format == 'binary':
+            if input_format == 'binary':
                 if inst.endswith(".npz"):
                     instance = instance_class.from_binary(
                         os.path.join(path, inst)
@@ -115,7 +115,7 @@ def main(format, model, timelimit, path, output_dir, label):
                     instance_name = inst[:-4]
                 else:
                     continue
-            elif format == 'csv':
+            elif input_format == 'csv':
                 if os.path.isdir(os.path.join(path, inst)):
                     instance = instance_class.from_csv(
                         os.path.join(path, inst)
