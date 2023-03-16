@@ -19,6 +19,8 @@ from continuousresource.localsearch.localsearch \
     import simulated_annealing, simulated_annealing_verbose
 from continuousresource.localsearch.searchspace_jobarray \
     import JobArraySearchSpaceCombined
+from continuousresource.localsearch.searchspace_jumppoint \
+    import JumpPointSearchSpaceCombined
 
 
 @click.command(context_settings=dict(help_option_names=['-h', '--help']))
@@ -87,8 +89,8 @@ def main(input_format, path, output_dir, label, verbose):
         Log extensive information on the runs.
     """
     # Vary parameters here
-    sp_class = JobArraySearchSpaceCombined
-    instance_class = JobPropertiesInstance
+    sp_class = JumpPointSearchSpaceCombined
+    instance_class = JumpPointInstance
     slackpenalties = [5, 5]
     sa_params = {
         'initial_temperature_func': (lambda n: n),
@@ -99,7 +101,7 @@ def main(input_format, path, output_dir, label, verbose):
     sp_params = {
         'infer_precedence': True,
         'fracs': {"swap": 0.75, "move": 0.15, "movepair": 0.1},
-        'start_solution': "greedy"
+        'start_solution': "random"
     }
 
     if not os.path.isdir(output_dir):
