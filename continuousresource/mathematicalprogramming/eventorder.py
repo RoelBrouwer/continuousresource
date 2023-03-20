@@ -182,8 +182,12 @@ class EventOrderLinearModel(LP):
                 e += self._nplannable - 2 + \
                     instance['eventlist'][first_idx - 1, 1] * \
                     (self._kextra - 2)
-            self._c_order[e].lhs = \
-                self._tvar[e] - self._tvar[e2]
+            if isinstance(self._c_order[e],
+                          docplex.mp.constr.LinearConstraint):
+                self._c_order[e].lhs = \
+                    self._tvar[e] - self._tvar[e2]
+            else:
+                self._c_order[e] = self._add_order_constraint(e, e2)
 
         if isinstance(self._c_order[e2], docplex.mp.constr.LinearConstraint):
             self._c_order[e2].lhs = \
@@ -198,8 +202,12 @@ class EventOrderLinearModel(LP):
                 e += self._nplannable - 2 + \
                     instance['eventlist'][first_idx + 2, 1] * \
                     (self._kextra - 2)
-            self._c_order[e1].lhs = \
-                self._tvar[e1] - self._tvar[e]
+            if isinstance(self._c_order[e1],
+                          docplex.mp.constr.LinearConstraint):
+                self._c_order[e1].lhs = \
+                    self._tvar[e1] - self._tvar[e]
+            else:
+                self._c_order[e1] = self._add_order_constraint(e1, e)
         else:
             self._problem.remove_constraints([
                 self._c_order[e1]
@@ -453,10 +461,13 @@ class EventOrderLinearModel(LP):
         i2 : int
             Index of the second event in the variable array `_tvar`.
         """
-        return self._problem.add_constraint(
-            ct=self._tvar[i] - self._tvar[i2] <= 0,
-            ctname=f"Interval_order_{i}_{i2}"
-        )
+        if isinstance(self._tvar[i], docplex.mp.dvar.Var) or \
+           isinstance(self._tvar[i2], docplex.mp.dvar.Var):
+            return self._problem.add_constraint(
+                ct=self._tvar[i] - self._tvar[i2] <= 0,
+                ctname=f"Interval_order_{i}_{i2}"
+            )
+        return None
 
     def _add_interval_capacity_constraint(self, i, i2):
         """Adds a constraint to the model that ensures the resource limit

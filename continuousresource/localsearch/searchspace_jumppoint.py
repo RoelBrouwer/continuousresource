@@ -112,12 +112,10 @@ class JumpPointSearchSpace(SearchSpace):
                 instance['jumppoints'][:, 1:-1].flatten()
             )
         elif self._params['start_solution'] == "random":
-            print(self._precedences)
             instance['eventlist'] = generate_random_solution(
                 self._precedences,
                 nplannable=self._nplannable
             )
-        print(instance['eventlist'])
         t_end = time.perf_counter()
         self._timings["initial_solution"] = t_end - t_start
 
