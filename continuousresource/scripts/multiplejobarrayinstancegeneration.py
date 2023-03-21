@@ -112,13 +112,22 @@ def main(exportpath, exportformat, label):
                             n, r, adversarial=a, params=params[str(n)]
                         )
 
+                        # Squeeze instance into a format understood by
+                        # the feasibility test
+                        feas_inst = {
+                            'resource-info':
+                                instance['jobs'][:, [0, 2]],
+                            'time-info':
+                                instance['jobs'][:, [3, 4]],
+                            'resource':
+                                instance['constants']['resource_availability']
+                        }
+
                         # Solve flow problem
                         lp = FeasibilityWithoutLowerbound(
-                            instance['jobs'],
-                            instance['constants']['resource_availability'],
+                            feas_inst,
                             f'{n}-{r}-{a}-{i}'
                         )
-                        lp.initialize_problem()
                         feasible = lp.solve() is not None
 
                         csv.write(

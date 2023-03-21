@@ -298,7 +298,7 @@ class JumpPointInstance(BaseInstance):
 
         # Sort weights and make them cumulative
         weights.sort()
-        weights[1:] = np.diff(weights)
+        weights[:, 1:] = np.diff(weights)
 
         return {
             'properties': properties,

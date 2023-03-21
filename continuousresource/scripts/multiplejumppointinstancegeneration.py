@@ -1,6 +1,5 @@
 import click
 import datetime
-import numpy as np
 import os.path
 
 from continuousresource.probleminstances.jumppointinstance \
@@ -114,18 +113,20 @@ def main(exportpath, exportformat, label):
 
                         # Squeeze instance into a format understood by
                         # the feasibility test
-                        jobs = np.empty(shape=(n, 5))
-                        jobs[:, :3] = instance['properties']
-                        jobs[:, 3] = instance['jumppoints'][:, 0]
-                        jobs[:, 4] = instance['jumppoints'][:, -1]
+                        feas_inst = {
+                            'resource-info':
+                                instance['properties'][:, [0, 2]],
+                            'time-info':
+                                instance['jumppoints'][:, [0, -1]],
+                            'resource':
+                                instance['constants']['resource_availability']
+                        }
 
                         # Solve flow problem
                         lp = FeasibilityWithoutLowerbound(
-                            jobs,
-                            instance['constants']['resource_availability'],
+                            feas_inst,
                             f'{n}-{r}-{k}-{i}'
                         )
-                        lp.initialize_problem()
                         feasible = lp.solve() is not None
 
                         csv.write(
