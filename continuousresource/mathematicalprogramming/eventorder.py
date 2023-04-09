@@ -1686,6 +1686,7 @@ class JobPropertiesContinuousLPWithSlack(LPWithSlack,
             )
             for i in range(self._nplannable)
         )
+        self._problem.minimize(self._cost)
 
     def _add_interval_capacity_constraint(self, i, i2):
         """Adds a constraint to the model that ensures the resource limit
@@ -2108,6 +2109,7 @@ class JumpPointContinuousLPWithSlack(LPWithSlack, JumpPointContinuousLP):
             )
             for i in range(self._nplannable)
         )
+        self._problem.minimize(self._cost)
 
     def _add_interval_capacity_constraint(self, i, i2):
         """Adds a constraint to the model that ensures the resource limit
