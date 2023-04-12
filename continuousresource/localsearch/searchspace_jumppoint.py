@@ -664,7 +664,7 @@ class JumpPointSearchSpace(SearchSpace):
         ell2 = jobl2 * 2 + typel2
         if typel2 > 1:
             ell2 += self._nplannable - 2 + jobl2 * (self._kextra - 2)
-        while not (self._precedences[ell2, job * 2]):
+        while not (self._precedences[ell2, job * 2 + 1]):
             llimit2 -= 1
             if llimit2 == -1:
                 break
@@ -696,7 +696,7 @@ class JumpPointSearchSpace(SearchSpace):
         erl2 = jobr2 * 2 + typer2
         if typer2 > 1:
             erl2 += self._nplannable - 2 + jobr2 * (self._kextra - 2)
-        while not (self._precedences[job * 2, erl2]):
+        while not (self._precedences[job * 2 + 1, erl2]):
             rlimit2 += 1
             if rlimit2 == len(self._current_solution.eventlist):
                 break
