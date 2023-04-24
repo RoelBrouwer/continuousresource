@@ -231,9 +231,9 @@ def generate_random_solution(precs, nplannable=-1):
             if events[i] < nplannable:
                 eventlist.append([events[i] % 2, math.floor(events[i] / 2)])
             else:
-                j = (events[i] - nplannable) % kextra
-                e = events[i] - nplannable - kextra * j + 2
-                eventlist.append([j, e])
+                e = (events[i] - nplannable) % kextra + 2
+                j = math.floor((events[i] - nplannable) / kextra)     
+                eventlist.append([e, j])
             events = np.delete(events, i)
             break
 

@@ -179,7 +179,7 @@ class JumpPointInstance(BaseInstance):
         Returns
         -------
         Dict
-            Dictionary containing the instance data. It has two fields:
+            Dictionary containing the instance data. It has four fields:
                 - `properties`, containing a two-dimensional (n x 3)
                   array of job properties:
                     - 0: resource requirement (E_j);

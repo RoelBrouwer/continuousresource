@@ -2,7 +2,6 @@ from abc import abstractmethod
 import docplex.mp.model
 import math
 import numpy as np
-import os
 
 from continuousresource.mathematicalprogramming.abstract \
     import LP, LPWithSlack, MIP
@@ -183,8 +182,12 @@ class EventOrderLinearModel(LP):
                 e += self._nplannable - 2 + \
                     instance['eventlist'][first_idx - 1, 1] * \
                     (self._kextra - 2)
-            self._c_order[e].lhs = \
-                self._tvar[e] - self._tvar[e2]
+            if isinstance(self._c_order[e],
+                          docplex.mp.constr.LinearConstraint):
+                self._c_order[e].lhs = \
+                    self._tvar[e] - self._tvar[e2]
+            else:
+                self._c_order[e] = self._add_order_constraint(e, e2)
 
         if isinstance(self._c_order[e2], docplex.mp.constr.LinearConstraint):
             self._c_order[e2].lhs = \
@@ -199,8 +202,12 @@ class EventOrderLinearModel(LP):
                 e += self._nplannable - 2 + \
                     instance['eventlist'][first_idx + 2, 1] * \
                     (self._kextra - 2)
-            self._c_order[e1].lhs = \
-                self._tvar[e1] - self._tvar[e]
+            if isinstance(self._c_order[e1],
+                          docplex.mp.constr.LinearConstraint):
+                self._c_order[e1].lhs = \
+                    self._tvar[e1] - self._tvar[e]
+            else:
+                self._c_order[e1] = self._add_order_constraint(e1, e)
         else:
             self._problem.remove_constraints([
                 self._c_order[e1]
@@ -454,10 +461,13 @@ class EventOrderLinearModel(LP):
         i2 : int
             Index of the second event in the variable array `_tvar`.
         """
-        return self._problem.add_constraint(
-            ct=self._tvar[i] - self._tvar[i2] <= 0,
-            ctname=f"Interval_order_{i}_{i2}"
-        )
+        if isinstance(self._tvar[i], docplex.mp.dvar.Var) or \
+           isinstance(self._tvar[i2], docplex.mp.dvar.Var):
+            return self._problem.add_constraint(
+                ct=self._tvar[i] - self._tvar[i2] <= 0,
+                ctname=f"Interval_order_{i}_{i2}"
+            )
+        return None
 
     def _add_interval_capacity_constraint(self, i, i2):
         """Adds a constraint to the model that ensures the resource limit
@@ -1655,6 +1665,428 @@ class JobPropertiesContinuousLPWithSlack(LPWithSlack,
                     name=f"s-_{j},{e}",
                     lb=0
                 )
+
+    def _set_objective(self, instance):
+        """Sets the objective of the LP model. Stores the objective in
+        the private `_cost` variable.
+
+        Parameters
+        ----------
+        instance : Dict of ndarray
+            Dictionary containing the instance data.
+        """
+        super()._set_objective(instance)
+
+        self._cost += self._problem.sum(
+            instance['constants']['slackpenalties'][0] * self._stvar[i] +
+            self._problem.sum(
+                instance['constants']['slackpenalties'][1] *
+                (self._slvar[j, i] + self._suvar[j, i])
+                for j in range(self._njobs)
+            )
+            for i in range(self._nplannable)
+        )
+
+    def _add_interval_capacity_constraint(self, i, i2):
+        """Adds a constraint to the model that ensures the resource limit
+        is respected within the interval.
+
+        Parameters
+        ----------
+        i : int
+            Index of the first event in the variable array `_tvar`.
+        i2 : int
+            Index of the second event in the variable array `_tvar`.
+        """
+        cap_c = super()._add_interval_capacity_constraint(i, i2)
+        cap_c.lhs -= self._stvar[i]
+        return cap_c
+
+    def _add_lower_bound_constraint(self, j, i, i2, lower_bound):
+        """Adds a constraint to the model that enforces the lower bound
+        of job `j` in the interval between the two events.
+
+        Parameters
+        ----------
+        j : int
+            Index of the job.
+        i : int
+            Index of the first event.
+        i2 : int
+            Index of the second event.
+        lower_bound : float
+            Lower bound of the job.
+        """
+        lb_c = super()._add_lower_bound_constraint(j, i, i2, lower_bound)
+        lb_c.lhs += self._slvar[j, i]
+        return lb_c
+
+    def _add_upper_bound_constraint(self, j, i, i2, upper_bound):
+        """Adds a constraint to the model that enforces the upper bound
+        of job `j` in the interval between the two events.
+
+        Parameters
+        ----------
+        j : int
+            Index of the job.
+        i : int
+            Index of the first event.
+        i2 : int
+            Index of the second event.
+        upper_bound : float
+            Upper bound of the job.
+        """
+        ub_c = super()._add_upper_bound_constraint(j, i, i2, upper_bound)
+        ub_c.lhs -= self._suvar[j, i]
+        return ub_c
+
+    def compute_slack(self, slackpenalties):
+        """Compute the (summed) value of the slack variables in the
+        model.
+
+        Parameters
+        ----------
+        slackpenalties : list of float
+            List of penalty coefficients for slack variables, The first
+            position is taken to be the penalty on the resource slack,
+            the second on the bound violations.
+
+        Returns
+        -------
+        list of tuple
+            List of tuples with in the first position a string
+            identifying the type of slack variable, in second position
+            the summed value of these variables (float) and in third
+            position the unit weight of these variables in the objective.
+        """
+        resource_slack = 0
+        upper_slack = 0
+        lower_slack = 0
+
+        for stvar in self._stvar:
+            if isinstance(stvar, docplex.mp.dvar.Var):
+                resource_slack += stvar.solution_value
+
+        for uppers in self._suvar:
+            for suvar in uppers:
+                if isinstance(suvar, docplex.mp.dvar.Var):
+                    upper_slack += suvar.solution_value
+
+        for lowers in self._slvar:
+            for slvar in lowers:
+                if isinstance(slvar, docplex.mp.dvar.Var):
+                    lower_slack += slvar.solution_value
+
+        return [("resource", resource_slack, slackpenalties[0]),
+                ("upperbound", upper_slack, slackpenalties[1]),
+                ("lowerbound", lower_slack, slackpenalties[1])]
+
+
+class JumpPointContinuousLP(EventOrderLinearModel):
+    """Class implementing a Linear Programming model for a resource
+    scheduling problem with continuous time and resource, that determines
+    a schedule for a given event order.
+
+    Parameters
+    ----------
+    instance : Dict of ndarray
+        Dictionary containing the instance data.
+    label : str
+        Label or name for the (solved) instance. Be sure to use one that
+        is sufficiently unique, to avoid conflicts or other unexpected
+        behavior.
+    """
+    def __init__(self, instance, label):
+        # Set some constants
+        self._njobs = len(instance['properties'])
+        self._kjumppoints = instance['jumppoints'].shape[1] - 1
+        self._nevents = self._njobs * (self._kjumppoints + 1)
+        self._nplannable = self._njobs * 2
+        self._resource = instance['constants']['resource_availability']
+
+        super().__init__(instance, label)
+
+    def _define_variable_arrays(self, instance):
+        """Defines the arrays organizing all decision variables in the
+        model. Fills the following two private variables: `_pvar`
+        (resources variables), `_tvar` (time variables).
+        """
+        self._pvar = np.zeros(shape=(self._njobs, self._nplannable),
+                              dtype=object)
+        self._tvar = np.zeros(shape=(self._nevents),
+                              dtype=object)
+
+        for j in range(self._njobs):
+            for i in range(instance['eventmap'][j, 0],
+                           instance['eventmap'][j, 1]):
+                if instance['eventlist'][i, 0] < 2:
+                    e = instance['eventlist'][i, 1] * 2 + \
+                        instance['eventlist'][i, 0]
+                    self._pvar[j, e] = self._problem.continuous_var(
+                        name=f"p_{j},{e}",
+                        lb=0
+                    )
+
+        for i in range(self._nplannable):
+            self._tvar[i] = self._problem.continuous_var(
+                name=f"t_{i}",
+                lb=0
+            )
+
+        for i in range(self._nevents - self._nplannable):
+            jp_idx = i % (self._kjumppoints - 1)
+            job = math.floor(i / (self._kjumppoints - 1))
+            self._tvar[i + self._nplannable] = \
+                instance['jumppoints'][job, jp_idx + 1]
+
+    def _define_constraint_arrays(self, instance):
+        """Defines the arrays organizing all constraints in the model.
+        Fills the following seven private variables: `_c_order`,
+        `_c_availability`, `_c_deadline`, `_c_release`, `_c_resource`,
+        `_c_lower`, `_c_upper`.
+        """
+        self._c_order = np.zeros(shape=self._nevents,
+                                 dtype=object)
+        self._c_availability = np.zeros(shape=self._nplannable,
+                                        dtype=object)
+        self._c_deadline = np.zeros(shape=self._njobs,
+                                    dtype=object)
+        self._c_release = np.zeros(shape=self._njobs,
+                                   dtype=object)
+        self._c_resource = np.zeros(shape=self._njobs,
+                                    dtype=object)
+        self._c_lower = np.zeros(shape=(self._njobs, self._nplannable),
+                                 dtype=object)
+        self._c_upper = np.zeros(shape=(self._njobs, self._nplannable),
+                                 dtype=object)
+
+    def _set_objective(self, instance):
+        """Sets the objective of the LP model. Stores the objective in
+        the private `_cost` variable.
+
+        Parameters
+        ----------
+        instance : Dict of ndarray
+            Dictionary containing the instance data.
+        """
+        self._cost = 0
+        self._problem.minimize(self._cost)
+
+    def _get_deadline(self, j, instance):
+        """Get the deadline of job `j`.
+
+        Parameters
+        ----------
+        j : int
+            Index of the job to get the deadline for.
+        instance : Dict of ndarray
+            Dictionary containing the instance data.
+        """
+        return instance['jumppoints'][j, -1]
+
+    def _get_release_time(self, j, instance):
+        """Get the release time of job `j`.
+
+        Parameters
+        ----------
+        j : int
+            Index of the job to get the release time for.
+        instance : Dict of ndarray
+            Dictionary containing the instance data.
+        """
+        return instance['jumppoints'][j, 0]
+
+    def _get_resource_requirement(self, j, instance):
+        """Get the resource requirement of job `j`.
+
+        Parameters
+        ----------
+        j : int
+            Index of the job to get the resource requirement for.
+        instance : Dict of ndarray
+            Dictionary containing the instance data.
+        """
+        return instance['properties'][j, 0]
+
+    def _get_lower_bound(self, j, instance):
+        """Get the lower bound of job `j`.
+
+        Parameters
+        ----------
+        j : int
+            Index of the job to get the lower bound for.
+        instance : Dict of ndarray
+            Dictionary containing the instance data.
+        """
+        return instance['properties'][j, 1]
+
+    def _get_upper_bound(self, j, instance):
+        """Get the upper bound of job `j`.
+
+        Parameters
+        ----------
+        j : int
+            Index of the job to get the upper bound for.
+        instance : Dict of ndarray
+            Dictionary containing the instance data.
+        """
+        return instance['properties'][j, 2]
+
+
+class JumpPointContinuousLPWithSlack(LPWithSlack, JumpPointContinuousLP):
+    def __init__(self, instance, label):
+        super().__init__(instance, label)
+
+    def update_swap_neighbors(self, instance, first_idx):
+        """Update the existing model by swapping two neighboring events
+        in the eventlist.
+
+        Parameters
+        ----------
+        instance : Dict of ndarray
+            Dictionary containing the instance data.
+        first_idx : int
+            Position of the first event in the event list that will
+            switch positions with its successor.
+        """
+        super().update_swap_neighbors(instance, first_idx)
+
+        # Swap has already been done
+        job1 = instance['eventlist'][first_idx + 1, 1]
+        type1 = instance['eventlist'][first_idx + 1, 0]
+        job2 = instance['eventlist'][first_idx, 1]
+        type2 = instance['eventlist'][first_idx, 0]
+        e1 = job1 * 2 + type1
+        if type1 > 1:
+            e1 += self._nplannable - 2 + job1 * (self._kextra - 2)
+        e2 = job2 * 2 + type2
+        if type2 > 1:
+            e2 += self._nplannable - 2 + job2 * (self._kextra - 2)
+
+        # Intervals only need updates if we swap two plannable events.
+        e0 = -1
+        e3 = -1
+        if type1 < 2 and type2 < 2:
+            pos = first_idx
+            while e0 < 0 and pos > 0:
+                pos -= 1
+                if instance['eventlist'][pos, 0] < 2:
+                    e0 = instance['eventlist'][pos, 1] * 2 + \
+                        instance['eventlist'][pos, 0]
+            pos = first_idx + 2
+            while e3 < 0 and pos < self._nevents:
+                if instance['eventlist'][pos, 0] < 2:
+                    e3 = instance['eventlist'][pos, 1] * 2 + \
+                        instance['eventlist'][pos, 0]
+                pos += 1
+
+        # update appropriate self._c_availability
+        if e0 > -1:
+            self._c_availability[e0].lhs -= self._stvar[e0]
+        if type1 < 2 and type2 < 2:
+            self._c_availability[e2].lhs -= self._stvar[e2]
+        if e3 > -1:
+            self._c_availability[e1].lhs -= self._stvar[e1]
+
+        # update appropriate self._c_lower & self._c_upper
+        if type1 == 1 and type2 < 2:
+            # Delayed completion, so bounds need to be enforced for an
+            # additional interval (now completes at the start of
+            # e2, i.e. has to be enforced during the preceding interval
+            if not isinstance(self._slvar[job1, e2], docplex.mp.dvar.Var):
+                self._slvar[job1, e2] = self._problem.continuous_var(
+                        name=f"s-_{job1},{e2}",
+                        lb=0
+                    )
+                self._suvar[job1, e2] = self._problem.continuous_var(
+                        name=f"s+_{job1},{e2}",
+                        lb=0
+                    )
+                self._cost += instance['constants']['slackpenalties'][1] * \
+                    (self._slvar[job1, e2] + self._suvar[job1, e2])
+            # 5. Lower bound
+            self._c_lower[job1, e2].lhs += self._slvar[job1, e2]
+            # 6. Upper bound
+            self._c_upper[job1, e2].lhs -= self._suvar[job1, e2]
+            # In addition, the time variables need to be updated in two
+            # more constraints.
+            # No need to check for e0 > -1: this is always true
+            assert e0 > -1
+            self._c_lower[job1, e0].lhs += self._slvar[job1, e0]
+            self._c_upper[job1, e0].lhs -= self._suvar[job1, e0]
+        elif type1 == 0 and type2 < 2:
+            # In addition, the time variables need to be updated in two
+            # more constraints.
+            assert e3 > -1
+            self._c_lower[job1, e1].lhs += self._slvar[job1, e1]
+            self._c_upper[job1, e1].lhs -= self._suvar[job1, e1]
+
+        if type2 == 0 and type1 < 2:
+            # Earlier start, so bounds need to be enforced for an
+            # additional interval
+            # No need to check boundary: this always holds
+            assert e3 > -1
+            if not isinstance(self._slvar[job2, e1], docplex.mp.dvar.Var):
+                self._slvar[job2, e1] = self._problem.continuous_var(
+                        name=f"s-_{job2},{e1}",
+                        lb=0
+                    )
+                self._suvar[job2, e1] = self._problem.continuous_var(
+                        name=f"s+_{job2},{e1}",
+                        lb=0
+                    )
+                self._cost += instance['constants']['slackpenalties'][1] * \
+                    (self._slvar[job2, e1] + self._suvar[job2, e1])
+            # 5. Lower bound
+            self._c_lower[job2, e1].lhs += self._slvar[job2, e1]
+            # 6. Upper bound
+            self._c_upper[job2, e1].lhs -= self._suvar[job2, e1]
+            # In addition, the time variables need to be updated in two
+            # more constraints.
+            self._c_lower[job2, e2].lhs += self._slvar[job2, e2]
+            self._c_upper[job2, e2].lhs -= self._suvar[job2, e2]
+        elif type2 == 1 and type1 < 2:
+            # In addition, the time variables need to be updated in two
+            # more constraints.
+            # No need to check for e0 > -1: this is always true
+            assert e0 > -1
+            self._c_lower[job2, e0].lhs += self._slvar[job2, e0]
+            self._c_upper[job2, e0].lhs -= self._suvar[job2, e0]
+
+    def _define_variable_arrays(self, instance):
+        """Defines the arrays organizing all decision variables in the
+        model. Fills the following five private variables: `_pvar`
+        (resources variables), `_tvar` (time variables), _`stvar`
+        (total resource slack variables), `_suvar` (upperbound slack
+        variables) and `_slvar` (lowerbound slack variables.
+        """
+        super()._define_variable_arrays(instance)
+        self._stvar = np.zeros(shape=self._nplannable, dtype=object)
+        self._suvar = np.zeros(shape=(self._njobs, self._nplannable),
+                               dtype=object)
+        self._slvar = np.zeros(shape=(self._njobs, self._nplannable),
+                               dtype=object)
+
+        for e in range(self._nplannable):
+            self._stvar[e] = self._problem.continuous_var(
+                name=f"st_{e}",
+                lb=0
+            )
+
+        for j in range(self._njobs):
+            for i in range(instance['eventmap'][j, 0],
+                           instance['eventmap'][j, 1]):
+                if instance['eventlist'][i, 0] < 2:
+                    e = instance['eventlist'][i, 1] * 2 + \
+                        instance['eventlist'][i, 0]
+                    self._suvar[j, e] = self._problem.continuous_var(
+                        name=f"s+_{j},{e}",
+                        lb=0
+                    )
+                    self._slvar[j, e] = self._problem.continuous_var(
+                        name=f"s-_{j},{e}",
+                        lb=0
+                    )
 
     def _set_objective(self, instance):
         """Sets the objective of the LP model. Stores the objective in
