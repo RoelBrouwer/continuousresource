@@ -49,6 +49,11 @@ def time_and_resource_vars_to_human_readable_solution_cplex(
               of occurrence of each event, in chronological order.
             - A two-dimensional array (n x |E|) of floats indicating the
               resource consumption for each job during all intervals.
+
+    Notes
+    -----
+    This method currently only returns a correct solution representation
+    if there are only start and completion events.
     """
     event_labels = np.zeros(shape=len(time_vars), dtype='U6')
     event_idx = np.zeros(shape=(len(time_vars), 2), dtype=int)
@@ -57,7 +62,11 @@ def time_and_resource_vars_to_human_readable_solution_cplex(
                                            len(time_vars)), dtype=float)
 
     # Sort the array of time variables by t
-    sorted_time = sorted(time_vars, key=lambda a: a.solution_value)
+    sorted_time = sorted(
+        time_vars,
+        key=lambda a: (a if not isinstance(a, docplex.mp.dvar.Var)
+                       else a.solution_value)
+    )
     event_idx_map = np.zeros(shape=len(time_vars), dtype=int)
 
     # Extract event related information

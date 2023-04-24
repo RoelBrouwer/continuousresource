@@ -101,7 +101,7 @@ def main(input_format, path, output_dir, label, verbose):
     sp_params = {
         'infer_precedence': True,
         'fracs': {"swap": 0.75, "move": 0.15, "movepair": 0.1},
-        'start_solution': "random"
+        'start_solution': "greedy"
     }
 
     if not os.path.isdir(output_dir):

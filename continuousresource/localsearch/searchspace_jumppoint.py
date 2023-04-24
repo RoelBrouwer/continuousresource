@@ -105,10 +105,36 @@ class JumpPointSearchSpace(SearchSpace):
         # Generate initial solution
         t_start = time.perf_counter()
         if self._params['start_solution'] == "greedy":
-            instance['eventlist'] = generate_initial_solution(
+            dummy_instance = copy.deepcopy(instance)
+            dummy_instance['jumppoints'] = instance['jumppoints'][:, [0, -1]]
+            dummy_instance['weights'] = instance['weights'][:, [0]]
+            dummy_instance['eventlist'] = generate_initial_solution(
                 instance['properties'][:, [0, 2]],
                 instance['jumppoints'][:, [0, -1]],
-                instance['constants']['resource_availability'],
+                instance['constants']['resource_availability']
+            )
+            dummy_instance['eventmap'] = construct_event_mapping(
+                dummy_instance['eventlist'], (self._njobs, 2)
+            )
+            if instance['constants']['slackpenalties'] is None:
+                init_lp = \
+                    JumpPointContinuousLP(dummy_instance, "construct_initial")
+            else:
+                init_lp = \
+                    JumpPointContinuousLPWithSlack(dummy_instance,
+                                                   "construct_initial")
+            sol = init_lp.solve()
+            initial_slack = []
+            if sol is not None:
+                initial_score = sol.get_objective_value()
+                if isinstance(init_lp, LPWithSlack):
+                    initial_slack = init_lp.compute_slack(
+                        instance['constants']['slackpenalties']
+                    )
+            else:
+                initial_score = np.inf
+            instance['eventlist'] = self._construct_eventlist(
+                init_lp.get_schedule(),
                 instance['jumppoints'][:, 1:-1].flatten()
             )
         elif self._params['start_solution'] == "random":
@@ -140,13 +166,29 @@ class JumpPointSearchSpace(SearchSpace):
                                                                 self._label)
 
         # Compute and register score
-        initial_score, initial_slack = self._compute_score()
+        if self._params['start_solution'] != "greedy":
+            initial_score, initial_slack = self._compute_score()
+        if initial_score != np.inf:
+            initial_score += self._compute_score_plannable_part(instance)
         self._current_solution.score = initial_score
         self._current_solution.slack = initial_slack
         self._best_solution.score = initial_score
         self._best_solution.slack = initial_slack
         self._initial_solution.score = initial_score
         self._initial_solution.slack = initial_slack
+
+    def _construct_eventlist(self, plannable_times, fixed_times):
+        """Construct an eventlist based on the times that each event
+        occurs in an initial solution.
+        """
+        times = np.array(
+            [[plannable_times[i], i % 2, math.floor(i / 2)]
+            for i in range(self._nplannable)] +
+            [[fixed_times[i], i % self._kextra + 2, math.floor(i / self._kextra)]
+            for i in range(self._nevents - self._nplannable)]
+        )
+        times = times[times[:, 0].argsort()]
+        return np.array(times[:, [1, 2]], dtype=int)
 
     def _compute_score(self):
         """Compute the (exact) score of the current solution
@@ -622,7 +664,7 @@ class JumpPointSearchSpace(SearchSpace):
         ell2 = jobl2 * 2 + typel2
         if typel2 > 1:
             ell2 += self._nplannable - 2 + jobl2 * (self._kextra - 2)
-        while not (self._precedences[ell2, job * 2]):
+        while not (self._precedences[ell2, job * 2 + 1]):
             llimit2 -= 1
             if llimit2 == -1:
                 break
@@ -654,7 +696,7 @@ class JumpPointSearchSpace(SearchSpace):
         erl2 = jobr2 * 2 + typer2
         if typer2 > 1:
             erl2 += self._nplannable - 2 + jobr2 * (self._kextra - 2)
-        while not (self._precedences[job * 2, erl2]):
+        while not (self._precedences[job * 2 + 1, erl2]):
             rlimit2 += 1
             if rlimit2 == len(self._current_solution.eventlist):
                 break

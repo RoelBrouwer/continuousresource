@@ -33,8 +33,7 @@ def construct_event_mapping(eventlist, shape):
     return event_map
 
 
-def generate_initial_solution(resource_info, time_info, resource,
-                              fixed_events=None):
+def generate_initial_solution(resource_info, time_info, resource):
     """Generate an eventlist for the given instance in a greedy way.
 
     The solution generates an event list, using the resource requirement
@@ -42,7 +41,8 @@ def generate_initial_solution(resource_info, time_info, resource,
     processed first (if the release time has passed), while trying to
     ensure any job can still be finished before its deadline. It assumes
     a constant resource availability. Lower bounds and costs are not
-    considered at all.
+    considered at all. The approach only considers plannable (not fixed-
+    time) events.
 
     Parameters
     ----------
@@ -56,9 +56,6 @@ def generate_initial_solution(resource_info, time_info, resource,
         to the time:
             - 0: release time (r_j);
             - 1: deadline (d_j).
-    fixed_events : ndarray
-        One-dimensional array containing the time of all fixed time
-        events, in order of their index (offset by all plannable events).
     resource : float
         Amount of resource available per time unit.
 
@@ -78,12 +75,7 @@ def generate_initial_solution(resource_info, time_info, resource,
 
     # Useful constants
     njobs = resource_info.shape[0]
-    nfixed = 0
-    if fixed_events is not None:
-        nfixed = len(fixed_events)
-    nplannable = njobs * 2
-    nevents = nplannable + nfixed
-    kextra = int(nfixed / njobs)
+    nevents = njobs * 2
 
     # Construct intervals
     # `boundaries` is a list of time points at which the list of jobs
@@ -102,11 +94,6 @@ def generate_initial_solution(resource_info, time_info, resource,
         ])
     ))
     boundaries = boundaries[boundaries[:, 0].argsort()]
-
-    # Create a reference table for the fixed events
-    if nfixed > 0:
-        fixed = np.array([(fixed_events[i], i) for i in range(nfixed)])
-        fixed = fixed[fixed[:, 0].argsort()]
 
     # Create the reference table we will be working with.
     # This will be a sorted list (sorted on deadline) of jobs that
