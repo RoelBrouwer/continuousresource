@@ -208,7 +208,7 @@ class EventOrderLinearModel(LP):
                     self._tvar[e1] - self._tvar[e]
             else:
                 self._c_order[e1] = self._add_order_constraint(e1, e)
-        else:
+        elif self._c_order[e1] is not None:
             self._problem.remove_constraints([
                 self._c_order[e1]
             ])
@@ -608,7 +608,7 @@ class EventOrderLinearModel(LP):
     def get_solution_csv(self):
         (event_labels, event_idx, event_timing, resource_consumption) = \
             time_and_resource_vars_to_human_readable_solution_cplex(
-                self._tvar, self._pvar,
+                self._tvar[:self._nplannable], self._pvar,
             )
         return solution_to_csv_string(event_labels, event_idx, event_timing,
                                       resource_consumption)
