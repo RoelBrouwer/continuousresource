@@ -183,9 +183,10 @@ class JumpPointSearchSpace(SearchSpace):
         """
         times = np.array(
             [[plannable_times[i], i % 2, math.floor(i / 2)]
-            for i in range(self._nplannable)] +
-            [[fixed_times[i], i % self._kextra + 2, math.floor(i / self._kextra)]
-            for i in range(self._nevents - self._nplannable)]
+             for i in range(self._nplannable)] +
+            [[fixed_times[i], i % self._kextra + 2,
+              math.floor(i / self._kextra)]
+             for i in range(self._nevents - self._nplannable)]
         )
         times = times[times[:, 0].argsort()]
         return np.array(times[:, [1, 2]], dtype=int)
@@ -209,9 +210,9 @@ class JumpPointSearchSpace(SearchSpace):
             score = sol.get_objective_value()
             if isinstance(self._lp_model, LPWithSlack):
                 slack = self._lp_model.compute_slack(
-                    self._current_solution.instance['constants'][
-                        'slackpenalties'
-                    ]
+                        self._current_solution.instance['constants'][
+                            'slackpenalties'
+                        ]
                 )
             else:
                 slack = []
@@ -346,7 +347,7 @@ class JumpPointSearchSpace(SearchSpace):
         slack_part, slack = self._compute_score()
         new_state.score = plan_part + slack_part
         new_state.slack = slack
-        
+
         slack_estimate = self._estimate_score_slack_part(new_state.instance)
         
         with open(os.path.join(os.getcwd(), "compare_score.csv"), "a") as f:
@@ -411,14 +412,15 @@ class JumpPointSearchSpace(SearchSpace):
         job = self._current_solution.eventlist[orig_idx, 1]
         etype = self._current_solution.eventlist[orig_idx, 0]
 
+        # Determine id of current event
+        orig_id = job * 2 + etype
+        if etype > 1:
+            orig_id += self._nplannable - 2 + job * (self._kextra - 2)
+
         # Determine closest predecessor with a precedence relation
         llimit = orig_idx
-        jobl = self._current_solution.eventlist[llimit, 1]
-        typel = self._current_solution.eventlist[llimit, 0]
-        ell = jobl * 2 + typel
-        if typel > 1:
-            ell += self._nplannable - 2 + jobl * (self._kextra - 2)
-        while not (self._precedences[ell, job * 2 + etype]):
+        ell = orig_id
+        while not (self._precedences[ell, orig_id]):
             llimit -= 1
             if llimit == -1:
                 break
@@ -430,12 +432,8 @@ class JumpPointSearchSpace(SearchSpace):
 
         # Determine closest successor with a precedence relation
         rlimit = orig_idx
-        jobr = self._current_solution.eventlist[rlimit, 1]
-        typer = self._current_solution.eventlist[rlimit, 0]
-        erl = jobr * 2 + typer
-        if typer > 1:
-            erl += self._nplannable - 2 + jobr * (self._kextra - 2)
-        while not (self._precedences[job * 2 + etype, erl]):
+        erl = orig_id
+        while not (self._precedences[orig_id, erl]):
             rlimit += 1
             if rlimit == len(self._current_solution.eventlist):
                 break
@@ -498,7 +496,7 @@ class JumpPointSearchSpace(SearchSpace):
         slack_part, slack = self._compute_score()
         new_state.score = plan_part + slack_part
         new_state.slack = slack
-        
+
         slack_estimate = self._estimate_score_slack_part(new_state.instance)
         
         with open(os.path.join(os.getcwd(), "compare_score.csv"), "a") as f:
@@ -763,7 +761,7 @@ class JumpPointSearchSpace(SearchSpace):
         slack_part, slack = self._compute_score()
         new_state.score = plan_part + slack_part
         new_state.slack = slack
-        
+
         slack_estimate = self._estimate_score_slack_part(new_state.instance)
         
         with open(os.path.join(os.getcwd(), "compare_score.csv"), "a") as f:
