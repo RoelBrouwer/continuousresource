@@ -211,6 +211,9 @@ def run_on_instances(input_format, path, output_dir, label, verbose,
             sa_params['initial_temperature'] = \
                 sa_params['initial_temperature_func'](int(params.group(1)))
 
+            # Set log directory (may be used)
+            sp_params['logdir'] = os.path.join(output_dir, instance_name)
+
             t_start = time.perf_counter()
 
             # Initialize the search space

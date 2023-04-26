@@ -12,6 +12,8 @@ from continuousresource.mathematicalprogramming.abstract \
     import LPWithSlack
 from continuousresource.mathematicalprogramming.eventorder \
     import JumpPointContinuousLP, JumpPointContinuousLPWithSlack
+from continuousresource.mathematicalprogramming.flowfeasibility \
+    import EstimatingPenaltyFlow
 
 
 class JumpPointSearchSpace(SearchSpace):
@@ -32,16 +34,18 @@ class JumpPointSearchSpace(SearchSpace):
             - `start_solution` (str): String indicating the method of
               generating a starting solution. Either `random` or
               `greedy`.
+            - `logdir` (str): location to write outputfiles to.
     """
     def __init__(self, instance, params=None):
         self._njobs = instance['properties'].shape[0]
         self._nevents = instance['jumppoints'].shape[1] * self._njobs
         self._nplannable = self._njobs * 2
         self._kextra = int((self._nevents - self._nplannable) / self._njobs)
-        with open(os.path.join(os.getcwd(), "compare_score.csv"), "w") as f:
+        self._logdir = params['logdir']
+        with open(os.path.join(self._logdir,
+                               "compare_score.csv"), "w") as f:
             f.write(
-                'score;score_estimate;planned_part;slack_part;slack_estimate;'
-                'frac_dif\n'
+                'score;flow_estimate;linear_estimate;planned_part\n'
             )
         super().__init__(instance, params=params)
         self._label = "jumppoint-superclass"
@@ -163,7 +167,7 @@ class JumpPointSearchSpace(SearchSpace):
         else:
             # With slack
             self._lp_model = JumpPointContinuousLPWithSlack(instance,
-                                                                self._label)
+                                                            self._label)
 
         # Compute and register score
         if self._params['start_solution'] != "greedy":
@@ -349,12 +353,18 @@ class JumpPointSearchSpace(SearchSpace):
         new_state.slack = slack
 
         slack_estimate = self._estimate_score_slack_part(new_state.instance)
-        
-        with open(os.path.join(os.getcwd(), "compare_score.csv"), "a") as f:
+        flow = EstimatingPenaltyFlow(new_state.instance, 'flow-test')
+        flow.solve()
+        sf = flow.compute_slack(new_state.instance['constants'][
+                            'slackpenalties'
+                        ])
+        slack_flow = sf[0][1] * sf[0][2] + sf[1][1] * sf[1][2] + \
+            sf[2][1] * sf[2][2]
+
+        with open(os.path.join(self._logdir, "compare_score.csv"), "a") as f:
             f.write(
-                f'{plan_part + slack_part};{plan_part + slack_estimate};'
-                f'{plan_part};{slack_part};{slack_estimate};'
-                f'{(slack_part - slack_estimate) / plan_part + slack_part}\n'
+                f'{plan_part + slack_part};{plan_part + slack_flow};'
+                f'{plan_part + slack_estimate};{plan_part}\n'
             )
 
         return new_state, swap_id
@@ -498,12 +508,18 @@ class JumpPointSearchSpace(SearchSpace):
         new_state.slack = slack
 
         slack_estimate = self._estimate_score_slack_part(new_state.instance)
-        
-        with open(os.path.join(os.getcwd(), "compare_score.csv"), "a") as f:
+        flow = EstimatingPenaltyFlow(new_state.instance, 'flow-test')
+        flow.solve()
+        sf = flow.compute_slack(new_state.instance['constants'][
+                            'slackpenalties'
+                        ])
+        slack_flow = sf[0][1] * sf[0][2] + sf[1][1] * sf[1][2] + \
+            sf[2][1] * sf[2][2]
+
+        with open(os.path.join(self._logdir, "compare_score.csv"), "a") as f:
             f.write(
-                f'{plan_part + slack_part};{plan_part + slack_estimate};'
-                f'{plan_part};{slack_part};{slack_estimate};'
-                f'{(slack_part - slack_estimate) / plan_part + slack_part}\n'
+                f'{plan_part + slack_part};{plan_part + slack_flow};'
+                f'{plan_part + slack_estimate};{plan_part}\n'
             )
 
         return new_state, (orig_idx, new_idx)
@@ -763,12 +779,18 @@ class JumpPointSearchSpace(SearchSpace):
         new_state.slack = slack
 
         slack_estimate = self._estimate_score_slack_part(new_state.instance)
-        
-        with open(os.path.join(os.getcwd(), "compare_score.csv"), "a") as f:
+        flow = EstimatingPenaltyFlow(new_state.instance, 'flow-test')
+        flow.solve()
+        sf = flow.compute_slack(new_state.instance['constants'][
+                            'slackpenalties'
+                        ])
+        slack_flow = sf[0][1] * sf[0][2] + sf[1][1] * sf[1][2] + \
+            sf[2][1] * sf[2][2]
+
+        with open(os.path.join(self._logdir, "compare_score.csv"), "a") as f:
             f.write(
-                f'{plan_part + slack_part};{plan_part + slack_estimate};'
-                f'{plan_part};{slack_part};{slack_estimate};'
-                f'{(slack_part - slack_estimate) / plan_part + slack_part}\n'
+                f'{plan_part + slack_part};{plan_part + slack_flow};'
+                f'{plan_part + slack_estimate};{plan_part}\n'
             )
 
         return new_state, (idx1, idx2, offset)
