@@ -652,12 +652,6 @@ class EventOrderMixedModel(MIP, EventOrderLinearModel):
                     # 1. Define the order amongst the events
                     self._add_order_constraint(i, i2)
 
-                    # 11. Successor variable backward
-                    self._add_successor_backward_constraint(i, i2)
-
-                    # 12. Successor variable forward
-                    self._add_successor_forward_constraint(i, i2)
-
                 if i2 > i:
                     # 10. Mutual exclusivity of order variables
                     self._add_order_exclusivity_constraint(i, i2)
@@ -668,6 +662,12 @@ class EventOrderMixedModel(MIP, EventOrderLinearModel):
                 if i != i2:
                     # 9. Interval resource availability
                     self._add_interval_capacity_constraint(i, i2)
+
+                    # 11. Successor variable backward
+                    self._add_successor_backward_constraint(i, i2)
+
+                    # 12. Successor variable forward
+                    self._add_successor_forward_constraint(i, i2)
 
         # Job-based constraints
         for j in range(self._njobs):
@@ -751,7 +751,7 @@ class EventOrderMixedModel(MIP, EventOrderLinearModel):
         self._problem.add_constraint(
             ct=self._problem.sum(
                 (self._avar[i, i3] - self._avar[i2, i3])
-                for i3 in range(self._nevents)
+                for i3 in range(self._nplannable)
             ) - 1 - (1 - self._bvar[i, i2]) * self._bigM <= 0,
             ctname=f"Successor_variable_backward_b_{i},{i2}"
         )
@@ -773,7 +773,7 @@ class EventOrderMixedModel(MIP, EventOrderLinearModel):
         self._problem.add_constraint(
             ct=self._problem.sum(
                 (self._avar[i, i3] - self._avar[i2, i3])
-                for i3 in range(self._nevents)
+                for i3 in range(self._plannable)
             ) - 1 + (1 - self._bvar[i, i2]) * self._bigM >= 0,
             ctname=f"Successor_variable_backward_b_{i},{i2}"
         )
@@ -926,9 +926,9 @@ class EventOrderMixedModel(MIP, EventOrderLinearModel):
         self._problem.add_constraint(
             ct=self._problem.sum(
                 self._bvar[i, i2]
-                for i in range(self._nevents)
-                for i2 in range(self._nevents) if i != i2
-            ) == self._nevents - 1,
+                for i in range(self._nplannable)
+                for i2 in range(self._nplannable) if i != i2
+            ) == self._nplannable - 1,
             ctname="Amount_of_successors"
         )
 
@@ -1214,6 +1214,11 @@ class JumpPointContinuousMIP(EventOrderMixedModel):
                     name=f"t_{i}",
                     lb=0
                 )
+                for i2 in range(self._nplannable):
+                    if i != i2:
+                        self._bvar[i, i2] = self._problem.binary_var(
+                            name=f"b_{i},{i2}"
+                        )
             else:
                 j = math.floor((i - self._nplannable) /
                                (self._kjumppoints - 1))
@@ -1223,9 +1228,6 @@ class JumpPointContinuousMIP(EventOrderMixedModel):
                 if i != i2:
                     self._avar[i, i2] = self._problem.binary_var(
                         name=f"a_{i},{i2}"
-                    )
-                    self._bvar[i, i2] = self._problem.binary_var(
-                        name=f"b_{i},{i2}"
                     )
 
     def _set_objective(self, instance):
