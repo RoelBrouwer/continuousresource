@@ -55,6 +55,10 @@ class JumpPointSearchSpaceData():
         return self._instance['constants']['resource_availability']
 
     @property
+    def slackpenalties(self):
+        return self._instance['constants']['slackpenalties']
+
+    @property
     def weights(self):
         return self._instance['weights']
 
@@ -78,8 +82,35 @@ class JumpPointSearchSpaceData():
     def fixed_successor_map(self):
         """Stores a table that matches each (plannable) event to the
         closest fixed-time event following it in the event order.
+
+        One dimensional array of length 2n, linking the index of the
+        plannable event (2 * job_id + event_type) to the index of the
+        fixed event (2n + kextra * job_id + etype - 2). If an event
+        does not have a fixed-time successor, the array stores a -1.
         """
         return self._fixed_successor_map
+
+    @property
+    def fixed_predecessor_map(self):
+        """Stores a table that matches each (plannable) event to the
+        closest fixed-time event preceding it in the event order.
+
+        One dimensional array of length 2n, linking the index of the
+        plannable event (2 * job_id + event_type) to the index of the
+        fixed event (2n + kextra * job_id + etype - 2). If an event
+        does not have a fixed-time predecessor, the array stores a -1.
+        """
+        return self._fixed_predecessor_map
+
+    @property
+    def resource_availability_table(self):
+        """A table that stores the cumulative resource totals and
+        shortage for computating a lower bound on the slack penalty.
+
+        Two-dimensional array |E| * 2: for every event, the total is
+        stored in the first column, and the shortage in the second.
+        """
+        return self._resource_availability_table
 
     def base_initiate(self):
         """Compute the score of a feasible solution respecting the
@@ -173,9 +204,109 @@ class JumpPointSearchSpaceData():
         self._base_cost += cost_diff
         self._jumppoint_map[map_update[0]] = map_update[1]
 
-    def simple_initiate(self, instance):
+    def simple_initiate(self):
+        """Compute the simple estimation of the penalty term for the
+        current event order.
+
+        This consists of three parts:
+            - Estimation of the lower bound violations;
+            - Estimation of the upper bound violations;
+            - Estimation of the resource availability violations.
+        """
         self._simple_valid = True
-        pass
+        self._fixed_predecessor_map = np.zeros(shape=self._nplannable,
+                                               dtype=int)
+        self._fixed_successor_map = np.zeros(shape=self._nplannable,
+                                             dtype=int)
+
+        # First compute a mapping for the closest fixed time events
+        prev_fix = -1
+        for [etype, job] in self._instance['eventlist']:
+            if etype > 1:
+                prev_fix = self._nplannable + job * self._kextra + etype - 2
+            else:
+                self._fixed_predecessor_map[2 * job + etype] = prev_fix
+        next_fix = -1
+        for [etype, job] in self._instance['eventlist'][::-1]:
+            if etype > 1:
+                next_fix = self._nplannable + job * self._kextra + etype - 2
+            else:
+                self._fixed_successor_map[2 * job + etype] = next_fix
+
+        # 1 & 2. Compute the lower/upper bound estimation
+        min_lb = 0
+        min_ub = 0
+
+        for job in range(self._njobs):
+            pre_start = self._fixed_predecessor_map[2 * job] \
+                - self._nplannable
+            pre_compl = self._fixed_predecessor_map[2 * job + 1] \
+                - self._nplannable
+            suc_start = self._fixed_successor_map[2 * job] \
+                - self._nplannable
+            suc_compl = self._fixed_successor_map[2 * job + 1] \
+                - self._nplannable
+            # etype -> x % self._kextra + 1
+            # job -> math.floor(x / self._kextra)
+            if pre_compl > -1 and suc_start > -1:
+                min_lb += max(
+                    0,
+                    (
+                        self._instance['jumppoints'][
+                            math.floor(pre_compl / self._kextra),
+                            pre_compl % self._kextra + 1] -
+                        self._instance['jumppoints'][
+                            math.floor(suc_start / self._kextra),
+                            suc_start % self._kextra + 1]
+                    ) * self._instance['properties'][job, 1] -
+                    self._instance['properties'][job, 0]
+                )
+            if pre_start < 0:
+                t_s = self._instance['jumppoints'][job, 0]
+            else:
+                t_s = self._instance['jumppoints'][
+                    math.floor(pre_start / self._kextra),
+                    pre_start % self._kextra + 1]
+            if suc_compl < 0:
+                t_e = self._instance['jumppoints'][job, -1]
+            else:
+                t_e = self._instance['jumppoints'][
+                    math.floor(suc_compl / self._kextra),
+                    suc_compl % self._kextra + 1]
+            min_ub += max(
+                0,
+                self._instance['properties'][job, 0] -
+                self._instance['properties'][job, 2] * (t_e - t_s)
+            )
+
+        # 3. Compute the resource estimation
+        self._resource_availability_table = np.zeros(shape=(self._nevents, 2),
+                                                     dtype=float)
+        for i, [etype, job] in enumerate(self._instance['eventlist']):
+            if etype > 1 and i > 0:
+                curr_res = self._instance['jumppoints'][job, etype - 1] * \
+                    self._instance['constants']['resource_availability']
+                self._resource_availability_table[i, 1] = \
+                    self._resource_availability_table[i - 1, 1] + max(
+                        0,
+                        self._resource_availability_table[i - 1, 0] - curr_res
+                    )
+                self._resource_availability_table[i, 0] = \
+                    min(self._resource_availability_table[i - 1, 0], curr_res)
+            elif etype == 1:
+                self._resource_availability_table[i, 0] = \
+                    self._resource_availability_table[i - 1, 0] + \
+                    self._instance['properties'][job, 0]
+                self._resource_availability_table[i, 1] = \
+                    self._resource_availability_table[i - 1, 1]
+            elif i > 0:
+                self._resource_availability_table[i] = \
+                    self._resource_availability_table[i - 1]
+
+        return (min_lb + min_ub) * \
+            self._instance['constants']['slackpenalties'][1] + \
+            self._resource_availability_table[-1, 1] * \
+            self._instance['constants']['slackpenalties'][0]
 
     def simple_update_compute(self):
         if not self._simple_valid:
@@ -188,4 +319,24 @@ class JumpPointSearchSpaceData():
         pass
 
     def simple_update_apply(self):
+        pass
+
+    def flow_initiate(self):
+        """Compute the flow approximation of the penalty term for the
+        current event order.
+        """
+        self._flow_valid = True
+        pass
+
+    def flow_update_compute(self):
+        if not self._flow_valid:
+            warnings.warn(
+                "Trying to update a non-valid state for the simple penalty"
+                " term estimation. Performing a full recompute instead."
+            )
+            self.flow_initiate()
+            return
+        pass
+
+    def flow_update_apply(self):
         pass
