@@ -6,6 +6,11 @@ import os
 import os.path
 import warnings
 
+from continuousresource.mathematicalprogramming.eventorder \
+    import JumpPointContinuousLPWithSlack
+from continuousresource.mathematicalprogramming.flowfeasibility \
+    import EstimatingPenaltyFlow
+
 
 class JumpPointSearchSpaceData():
     """Object to store and easily interface datastructures used in the
@@ -77,6 +82,14 @@ class JumpPointSearchSpaceData():
     @property
     def kextra(self):
         return self._kextra
+
+    @property
+    def flow_model(self):
+        return self._flow_model
+
+    @property
+    def lp_model(self):
+        return self._lp_model
 
     @property
     def fixed_successor_map(self):
@@ -326,17 +339,58 @@ class JumpPointSearchSpaceData():
         current event order.
         """
         self._flow_valid = True
-        pass
+        self._flow_model = EstimatingPenaltyFlow(self._instance, 'flow-test')
+        sol = self._flow_model.solve()
+        if sol is None:
+            return np.inf
+        self._flow_slack = self._flow_model.compute_slack(
+            self._instance['constants']['slackpenalties']
+        )
+        return self._flow_slack[0][1] * self._flow_slack[0][2] + \
+            self._flow_slack[1][1] * self._flow_slack[1][2] + \
+            self._flow_slack[2][1] * self._flow_slack[2][2]
 
     def flow_update_compute(self):
         if not self._flow_valid:
             warnings.warn(
-                "Trying to update a non-valid state for the simple penalty"
-                " term estimation. Performing a full recompute instead."
+                "Trying to update a non-valid state for the flow-based"
+                " penalty term estimation. Performing a full recompute"
+                " instead."
             )
             self.flow_initiate()
             return
-        pass
+        raise NotImplementedError
 
     def flow_update_apply(self):
+        raise NotImplementedError
+
+    def lp_initiate(self):
+        """Compute the penalty term in the LP for the current event
+        order.
+        """
+        self._lp_valid = True
+        self._lp_model = JumpPointContinuousLPWithSlack(self._instance,
+                                                        'lp-test')
+        sol = self._lp_model.solve()
+        if sol is None:
+            return np.inf
+
+        return sol.get_objective_value()
+        # self._lp_slack = self._lp_model.compute_slack(
+        #     self._instance['constants']['slackpenalties']
+        # )
+        # return self._lp_slack[0][1] * self._lp_slack[0][2] + \
+        #     self._lp_slack[1][1] * self._lp_slack[1][2] + \
+        #     self._lp_slack[2][1] * self._lp_slack[2][2]
+
+    def lp_update_compute(self, event_idx, offset):
+        if not self._lp_valid:
+            warnings.warn(
+                "Trying to update a non-valid state of the LP for the"
+                " penalty term computation. Performing a full recompute"
+                " instead."
+            )
+            self.lp_initiate()
+            return
+        raise NotImplementedError
         pass
