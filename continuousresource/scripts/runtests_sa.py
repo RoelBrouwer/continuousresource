@@ -100,7 +100,7 @@ def main(input_format, path, output_dir, label, verbose):
     }
     sp_params = {
         'infer_precedence': True,
-        'fracs': {"swap": 0.75, "move": 0.15, "movepair": 0.1},
+        'fracs': {"swap": 1.0, "move": 0.0, "movepair": 0.0},
         'start_solution': "greedy"
     }
 
@@ -265,11 +265,12 @@ Total time (s): {t_end - t_start}
                                   f"{partial_label}_operator_data.json"), 'w')
             )
 
-            total_slack = 0
-            if isinstance(search_space.lp, LPWithSlack) \
-               and len(solution.slack) > 0:
-                for (slack_label, value, weight) in solution.slack:
-                    total_slack += value * weight
+            total_slack = solution.slack
+            # total_slack = 0
+            # if isinstance(search_space.lp, LPWithSlack) \
+            #    and len(solution.slack) > 0:
+            #     for (slack_label, value, weight) in solution.slack:
+            #         total_slack += value * weight
 
             # Build-up CSV-file
             csv.write(

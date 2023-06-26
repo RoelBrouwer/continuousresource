@@ -43,9 +43,19 @@ class JumpPointSearchSpaceData():
     def eventlist(self):
         return self._instance['eventlist']
 
+    @eventlist.setter
+    def eventlist(self, e):
+        # TODO: improve
+        self._instance['eventlist'] = e
+
     @property
     def eventmap(self):
         return self._instance['eventmap']
+
+    @eventmap.setter
+    def eventmap(self, e):
+        # TODO: improve
+        self._instance['eventmap'] = e
 
     @property
     def job_properties(self):

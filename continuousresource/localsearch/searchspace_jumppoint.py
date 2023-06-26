@@ -8,6 +8,7 @@ import os.path
 from .eventorder_utils import construct_event_mapping, find_precedences, \
     generate_initial_solution, generate_random_solution
 from .searchspace_abstract import SearchSpace, SearchSpaceState
+from .searchspace_jumppoint_helper import JumpPointSearchSpaceData
 from continuousresource.mathematicalprogramming.abstract \
     import LPWithSlack
 from continuousresource.mathematicalprogramming.eventorder \
@@ -37,15 +38,13 @@ class JumpPointSearchSpace(SearchSpace):
             - `logdir` (str): location to write outputfiles to.
     """
     def __init__(self, instance, params=None):
-        self._njobs = instance['properties'].shape[0]
-        self._nevents = instance['jumppoints'].shape[1] * self._njobs
-        self._nplannable = self._njobs * 2
-        self._kextra = int((self._nevents - self._nplannable) / self._njobs)
         self._logdir = params['logdir']
+        self._data = JumpPointSearchSpaceData(instance)
         with open(os.path.join(self._logdir,
                                "compare_score.csv"), "w") as f:
             f.write(
-                'score;flow_estimate;linear_estimate;planned_part\n'
+                'score;flow_estimate;linear_estimate;planned_part;lp_time;'
+                'flow_time;simple_time;det_time\n'
             )
         super().__init__(instance, params=params)
         self._label = "jumppoint-superclass"
@@ -70,6 +69,26 @@ class JumpPointSearchSpace(SearchSpace):
         have been applied.
         """
         return self._operator_data
+
+    @property
+    def nevents(self):
+        return self._data.nevents
+
+    @property
+    def njobs(self):
+        return self._data.njobs
+
+    @property
+    def nplannable(self):
+        return self._data.nplannable
+
+    @property
+    def kextra(self):
+        return self._data.kextra
+
+    @property
+    def lp(self):
+        return self._data.lp_model
 
     def _find_precedences(self, instance, infer_precedence):
         """Construct an array indicating precedence relations between
@@ -118,7 +137,7 @@ class JumpPointSearchSpace(SearchSpace):
                 instance['constants']['resource_availability']
             )
             dummy_instance['eventmap'] = construct_event_mapping(
-                dummy_instance['eventlist'], (self._njobs, 2)
+                dummy_instance['eventlist'], (self.njobs, 2)
             )
             if instance['constants']['slackpenalties'] is None:
                 init_lp = \
@@ -137,14 +156,14 @@ class JumpPointSearchSpace(SearchSpace):
                     )
             else:
                 initial_score = np.inf
-            instance['eventlist'] = self._construct_eventlist(
+            self._data.eventlist = self._construct_eventlist(
                 init_lp.get_schedule(),
                 instance['jumppoints'][:, 1:-1].flatten()
             )
         elif self._params['start_solution'] == "random":
-            instance['eventlist'] = generate_random_solution(
+            self._data.eventlist = generate_random_solution(
                 self._precedences,
-                nplannable=self._nplannable
+                nplannable=self.nplannable
             )
         t_end = time.perf_counter()
         self._timings["initial_solution"] = t_end - t_start
@@ -152,28 +171,16 @@ class JumpPointSearchSpace(SearchSpace):
         # Construct eventmap
         njobs = instance['properties'].shape[0]
         kjumps = instance['jumppoints'].shape[1]
-        instance['eventmap'] = construct_event_mapping(instance['eventlist'],
-                                                       (njobs, kjumps))
+        self._data.eventmap = construct_event_mapping(self._data.eventlist,
+                                                      (njobs, kjumps))
 
         # Initialize states
-        self._current_solution = SearchSpaceState(instance)
+        self._current_solution = SearchSpaceStateJumpPoint(self._data.eventlist)
         self._best_solution = self._current_solution.__copy__()
         self._initial_solution = self._current_solution.__copy__()
 
-        # Initialize LP model
-        if instance['constants']['slackpenalties'] is None:
-            # No slack
-            self._lp_model = JumpPointContinuousLP(instance, self._label)
-        else:
-            # With slack
-            self._lp_model = JumpPointContinuousLPWithSlack(instance,
-                                                            self._label)
-
         # Compute and register score
-        if self._params['start_solution'] != "greedy":
-            initial_score, initial_slack = self._compute_score()
-        if initial_score != np.inf:
-            initial_score += self._compute_score_plannable_part(instance)
+        initial_score, initial_slack = self._compute_current()
         self._current_solution.score = initial_score
         self._current_solution.slack = initial_slack
         self._best_solution.score = initial_score
@@ -187,10 +194,10 @@ class JumpPointSearchSpace(SearchSpace):
         """
         times = np.array(
             [[plannable_times[i], i % 2, math.floor(i / 2)]
-             for i in range(self._nplannable)] +
-            [[fixed_times[i], i % self._kextra + 2,
-              math.floor(i / self._kextra)]
-             for i in range(self._nevents - self._nplannable)]
+             for i in range(self.nplannable)] +
+            [[fixed_times[i], i % self.kextra + 2,
+              math.floor(i / self.kextra)]
+             for i in range(self.nevents - self.nplannable)]
         )
         times = times[times[:, 0].argsort()]
         return np.array(times[:, [1, 2]], dtype=int)
@@ -224,35 +231,32 @@ class JumpPointSearchSpace(SearchSpace):
         else:
             return np.inf, []
 
-    def _compute_score_plannable_part(self, instance):
-        """Compute the score of a feasible solution respecting the
-        current event order.
-        """
-        cost = 0
-        jp = np.zeros(shape=self._njobs, dtype=int)
-        for [etype, job] in instance['eventlist']:
-            if etype > 1:
-                jp[job] = etype - 1
-            elif etype == 1:
-                cost += sum(instance['weights'][job, :jp[job] + 1])
-        return cost
+    def _compute_current(self):
+        """Compute the scores associated with the current state of _data.
 
-    def _estimate_score_slack_part(self, instance):
-        """Get a lower bound on the contribution of slack penalties to
-        the objective function for any schedule using the current event
-        order.
+        Returns
+        -------
+        float
+            Score of the current solution
         """
-        total_res = 0
-        short_res = 0
-        for [etype, job] in instance['eventlist']:
-            if etype > 1:
-                curr_res = instance['jumppoints'][job, etype - 1] * \
-                    instance['constants']['resource_availability']
-                short_res += max(0, total_res - curr_res)
-                total_res = min(total_res, curr_res)
-            elif etype == 1:
-                total_res += instance['properties'][job, 0]
-        return short_res * instance['constants']['slackpenalties'][0]
+        t_1 = time.perf_counter()
+        base_score = self._data.base_initiate()
+        t_2 = time.perf_counter()
+        simple_slack = self._data.simple_initiate()
+        t_3 = time.perf_counter()
+        flow_slack = self._data.flow_initiate()
+        t_4 = time.perf_counter()
+        lp_slack = self._data.lp_initiate()
+        t_5 = time.perf_counter()
+
+        with open(os.path.join(self._logdir,
+                               "compare_score.csv"), "a") as f:
+            f.write(
+                f'{lp_slack};{flow_slack};{simple_slack};{base_score};'
+                f'{t_5-t_4};{t_4 - t_3};{t_3 - t_2};{t_2 - t_1}\n'
+            )
+        return base_score, lp_slack
+        
 
     def get_random_order(self):
         """Returns a random event order that respects (precomputed)
@@ -266,7 +270,7 @@ class JumpPointSearchSpace(SearchSpace):
             the event type and the second column the associated job ID.
         """
         return generate_random_solution(self._precedences,
-                                        nplannable=self._nplannable)
+                                        nplannable=self.nplannable)
 
     def get_neighbor_swap(self, swap_id=None):
         """Finds candidate solutions by swapping adjacent event pairs.
@@ -279,7 +283,7 @@ class JumpPointSearchSpace(SearchSpace):
 
         Returns
         -------
-        SearchSpaceState
+        SearchSpaceStateJumpPoint
             New state for the search to continue with
         int
             ID of the first swapped event
@@ -300,10 +304,10 @@ class JumpPointSearchSpace(SearchSpace):
             type2 = self._current_solution.eventlist[swap_id + 1, 0]
             e1 = job1 * 2 + type1
             if type1 > 1:
-                e1 += self._nplannable - 2 + job1 * (self._kextra - 2)
+                e1 += self.nplannable - 2 + job1 * (self.kextra - 2)
             e2 = job2 * 2 + type2
             if type2 > 1:
-                e2 += self._nplannable - 2 + job2 * (self._kextra - 2)
+                e2 += self.nplannable - 2 + job2 * (self.kextra - 2)
             while self._precedences[e1, e2]:
                 swap_id = np.random.randint(
                     len(self._current_solution.instance['eventlist'] - 1)
@@ -314,7 +318,7 @@ class JumpPointSearchSpace(SearchSpace):
                 type2 = self._current_solution.eventlist[swap_id + 1, 0]
                 e1 = job1 * 2 + type1
                 if type1 > 1:
-                    e1 += self._nplannable - 2 + job1 * (self._kextra - 2)
+                    e1 += self.nplannable - 2 + job1 * (self.kextra - 2)
                 e2 = job2 * 2 + type2
         else:
             job1 = self._current_solution.eventlist[swap_id, 1]
@@ -323,49 +327,30 @@ class JumpPointSearchSpace(SearchSpace):
             type2 = self._current_solution.eventlist[swap_id + 1, 0]
             e1 = job1 * 2 + type1
             if type1 > 1:
-                e1 += self._nplannable - 2 + job1 * (self._kextra - 2)
+                e1 += self.nplannable - 2 + job1 * (self.kextra - 2)
             e2 = job2 * 2 + type2
             if type2 > 1:
-                e2 += self._nplannable - 2 + job2 * (self._kextra - 2)
+                e2 += self.nplannable - 2 + job2 * (self.kextra - 2)
             if self._precedences[e1, e2]:
                 return None, swap_id
 
         new_state = self._current_solution.__copy__()
-        new_state.instance['eventmap'][
-            new_state.instance['eventlist'][swap_id, 1],
-            new_state.instance['eventlist'][swap_id, 0]
+        new_state.eventlist[[swap_id, swap_id + 1], :] = \
+            new_state.eventlist[[swap_id + 1, swap_id], :]
+        self._data.eventmap[
+            self._data.eventlist[swap_id, 1],
+            self._data.eventlist[swap_id, 0],
         ] += 1
-        new_state.instance['eventmap'][
-            new_state.instance['eventlist'][swap_id + 1, 1],
-            new_state.instance['eventlist'][swap_id + 1, 0]
+        self._data.eventmap[
+            self._data.eventlist[swap_id + 1, 1],
+            self._data.eventlist[swap_id + 1, 0],
         ] -= 1
-        new_state.instance['eventlist'][[swap_id, swap_id + 1], :] = \
-            new_state.instance['eventlist'][[swap_id + 1, swap_id], :]
+        self._data.eventlist[[swap_id, swap_id + 1], :] = \
+            self._data.eventlist[[swap_id + 1, swap_id], :]
 
-        t_start = time.perf_counter()
-        self._lp_model.update_swap_neighbors(new_state.instance, swap_id)
-        t_end = time.perf_counter()
-        self._timings["model_update"] += t_end - t_start
-
-        plan_part = self._compute_score_plannable_part(new_state.instance)
-        slack_part, slack = self._compute_score()
-        new_state.score = plan_part + slack_part
-        new_state.slack = slack
-
-        slack_estimate = self._estimate_score_slack_part(new_state.instance)
-        flow = EstimatingPenaltyFlow(new_state.instance, 'flow-test')
-        flow.solve()
-        sf = flow.compute_slack(new_state.instance['constants'][
-                            'slackpenalties'
-                        ])
-        slack_flow = sf[0][1] * sf[0][2] + sf[1][1] * sf[1][2] + \
-            sf[2][1] * sf[2][2]
-
-        with open(os.path.join(self._logdir, "compare_score.csv"), "a") as f:
-            f.write(
-                f'{plan_part + slack_part};{plan_part + slack_flow};'
-                f'{plan_part + slack_estimate};{plan_part}\n'
-            )
+        new_score, new_slack = self._compute_current()
+        new_state.score = new_score + new_slack
+        new_state.slack = new_slack
 
         return new_state, swap_id
 
@@ -374,18 +359,24 @@ class JumpPointSearchSpace(SearchSpace):
 
         Parameters
         ----------
-        new_state : SearchSpaceState
+        new_state : SearchSpaceStateJumpPoint
             Reference to the state containing a link to the model that
             should be reverted.
         swap_id : int
             ID of the first event to be swapped back.
         """
         self._operator_data["swap"]["succeeded"] -= 1
-        t_start = time.perf_counter()
-        self._lp_model.update_swap_neighbors(self._current_solution.instance,
-                                             swap_id)
-        t_end = time.perf_counter()
-        self._timings["model_update"] += t_end - t_start
+        self._data.eventmap[
+            self._data.eventlist[swap_id, 1],
+            self._data.eventlist[swap_id, 0],
+        ] += 1
+        self._data.eventmap[
+            self._data.eventlist[swap_id + 1, 1],
+            self._data.eventlist[swap_id + 1, 0],
+        ] -= 1
+        self._data.eventlist[[swap_id, swap_id + 1], :] = \
+            self._data.eventlist[[swap_id + 1, swap_id], :]
+        
 
     def get_neighbor_move(self, orig_idx=None, dist='uniform'):
         """Finds candidate solutions by moving an event a random number
@@ -425,7 +416,7 @@ class JumpPointSearchSpace(SearchSpace):
         # Determine id of current event
         orig_id = job * 2 + etype
         if etype > 1:
-            orig_id += self._nplannable - 2 + job * (self._kextra - 2)
+            orig_id += self.nplannable - 2 + job * (self.kextra - 2)
 
         # Determine closest predecessor with a precedence relation
         llimit = orig_idx
@@ -438,7 +429,7 @@ class JumpPointSearchSpace(SearchSpace):
             typel = self._current_solution.eventlist[llimit, 0]
             ell = jobl * 2 + typel
             if typel > 1:
-                ell += self._nplannable - 2 + jobl * (self._kextra - 2)
+                ell += self.nplannable - 2 + jobl * (self.kextra - 2)
 
         # Determine closest successor with a precedence relation
         rlimit = orig_idx
@@ -451,7 +442,7 @@ class JumpPointSearchSpace(SearchSpace):
             typer = self._current_solution.eventlist[rlimit, 0]
             erl = jobr * 2 + typer
             if typer > 1:
-                erl += self._nplannable - 2 + jobr * (self._kextra - 2)
+                erl += self.nplannable - 2 + jobr * (self.kextra - 2)
 
         # If the range of possibilities is limited to the current
         # position, we select another job.
@@ -662,7 +653,7 @@ class JumpPointSearchSpace(SearchSpace):
         typel1 = self._current_solution.eventlist[llimit1, 0]
         ell1 = jobl1 * 2 + typel1
         if typel1 > 1:
-            ell1 += self._nplannable - 2 + jobl1 * (self._kextra - 2)
+            ell1 += self.nplannable - 2 + jobl1 * (self.kextra - 2)
         while not (self._precedences[ell1, job * 2]):
             llimit1 -= 1
             if llimit1 == -1:
@@ -671,13 +662,13 @@ class JumpPointSearchSpace(SearchSpace):
             typel1 = self._current_solution.eventlist[llimit1, 0]
             ell1 = jobl1 * 2 + typel1
             if typel1 > 1:
-                ell1 += self._nplannable - 2 + jobl1 * (self._kextra - 2)
+                ell1 += self.nplannable - 2 + jobl1 * (self.kextra - 2)
         llimit2 = idx2
         jobl2 = self._current_solution.eventlist[llimit2, 1]
         typel2 = self._current_solution.eventlist[llimit2, 0]
         ell2 = jobl2 * 2 + typel2
         if typel2 > 1:
-            ell2 += self._nplannable - 2 + jobl2 * (self._kextra - 2)
+            ell2 += self.nplannable - 2 + jobl2 * (self.kextra - 2)
         while not (self._precedences[ell2, job * 2 + 1]):
             llimit2 -= 1
             if llimit2 == -1:
@@ -686,7 +677,7 @@ class JumpPointSearchSpace(SearchSpace):
             typel2 = self._current_solution.eventlist[llimit2, 0]
             ell2 = jobl2 * 2 + typel2
             if typel2 > 1:
-                ell2 += self._nplannable - 2 + jobl2 * (self._kextra - 2)
+                ell2 += self.nplannable - 2 + jobl2 * (self.kextra - 2)
 
         # Determine closest successor with a precedence relation
         rlimit1 = idx1
@@ -694,7 +685,7 @@ class JumpPointSearchSpace(SearchSpace):
         typer1 = self._current_solution.eventlist[rlimit1, 0]
         erl1 = jobr1 * 2 + typer1
         if typer1 > 1:
-            erl1 += self._nplannable - 2 + jobr1 * (self._kextra - 2)
+            erl1 += self.nplannable - 2 + jobr1 * (self.kextra - 2)
         while not (self._precedences[job * 2, erl1]):
             rlimit1 += 1
             if rlimit1 == len(self._current_solution.eventlist):
@@ -703,13 +694,13 @@ class JumpPointSearchSpace(SearchSpace):
             typer1 = self._current_solution.eventlist[rlimit1, 0]
             erl1 = jobr1 * 2 + typer1
             if typer1 > 1:
-                erl1 += self._nplannable - 2 + jobr1 * (self._kextra - 2)
+                erl1 += self.nplannable - 2 + jobr1 * (self.kextra - 2)
         rlimit2 = idx2
         jobr2 = self._current_solution.eventlist[rlimit2, 1]
         typer2 = self._current_solution.eventlist[rlimit2, 0]
         erl2 = jobr2 * 2 + typer2
         if typer2 > 1:
-            erl2 += self._nplannable - 2 + jobr2 * (self._kextra - 2)
+            erl2 += self.nplannable - 2 + jobr2 * (self.kextra - 2)
         while not (self._precedences[job * 2 + 1, erl2]):
             rlimit2 += 1
             if rlimit2 == len(self._current_solution.eventlist):
@@ -718,7 +709,7 @@ class JumpPointSearchSpace(SearchSpace):
             typer2 = self._current_solution.eventlist[rlimit2, 0]
             erl2 = jobr2 * 2 + typer2
             if typer2 > 1:
-                erl2 += self._nplannable - 2 + jobr2 * (self._kextra - 2)
+                erl2 += self.nplannable - 2 + jobr2 * (self.kextra - 2)
 
         llimit = max(llimit1 - idx1, llimit2 - idx2)
         rlimit = min(rlimit1 - idx1, rlimit2 - idx2)
@@ -930,14 +921,14 @@ class JumpPointSearchSpaceCombined(JumpPointSearchSpace):
         if frac < self._fracs["swap"]:
             fail_count, new_state = \
                 self._get_neighbor_swap_aggregate(temperature)
-            if new_state is None:
-                fail_count1, new_state = \
-                    self._get_neighbor_movelinear_aggregate(temperature)
-                fail_count += fail_count1
-                if new_state is None:
-                    fail_count2, new_state = \
-                        self._get_neighbor_move_pair_aggregate(temperature)
-                    fail_count += fail_count2
+            # if new_state is None:
+            #     fail_count1, new_state = \
+            #         self._get_neighbor_movelinear_aggregate(temperature)
+            #     fail_count += fail_count1
+            #     if new_state is None:
+            #         fail_count2, new_state = \
+            #             self._get_neighbor_move_pair_aggregate(temperature)
+            #         fail_count += fail_count2
         elif frac < self._fracs["swap"] + self._fracs["move"]:
             fail_count, new_state = \
                 self._get_neighbor_movelinear_aggregate(temperature)
@@ -1156,3 +1147,72 @@ class JumpPointSearchSpaceCombined(JumpPointSearchSpace):
                 new_state = None
 
         return fail_count, new_state
+
+
+class SearchSpaceStateJumpPoint(SearchSpaceState):
+    """Class object describing a state in the search space for a local
+    search approach.
+
+    Parameters
+    ----------
+        instance : Dict of ndarray
+            Dictionary containing the instance data.
+    """
+    def __init__(self, eventlist):
+        self._eventlist = eventlist
+        self._score = np.inf
+        self._slack = []
+
+    def __copy__(self):
+        """Override copy method to make copies of some attributes and
+        reset others.
+        """
+        return self.__class__(copy.deepcopy(self._eventlist))
+
+    @property
+    def instance(self):
+        raise NotImplementedError
+
+    @property
+    def score(self):
+        """float : Score of the represented solution (objective value of
+        the LP referenced in `model`).
+        """
+        return self._score
+
+    @score.setter
+    def score(self, score):
+        """Manually set the value of the score attribute for this state.
+        Use with caution.
+        """
+        self._score = score
+
+    @property
+    def slack(self):
+        """list of tuple : List of tuples with in the first position a
+        string identifying the type of slack variable, in second position
+        the summed value of these variables (float) and in third position
+        the unit weight of these variables in the objective.
+        """
+        return self._slack
+
+    @slack.setter
+    def slack(self, slack):
+        """Manually set the value of the slack attribute for this state.
+        Use with caution."""
+        self._slack = slack
+
+    @property
+    def eventlist(self):
+        return self._eventlist
+
+    @eventlist.setter
+    def eventlist(self, eventlist):
+        """Manually set the value of the eventorder attribute for this
+        state. Use with caution."""
+        self._eventlist = eventlist
+
+    @property
+    def eventmap(self):
+        raise NotImplementedError
+
