@@ -9,6 +9,7 @@ from .eventorder_utils import construct_event_mapping, find_precedences, \
     generate_initial_solution, generate_random_solution
 from .searchspace_abstract import SearchSpace, SearchSpaceState
 from .searchspace_jumppoint_helper import JumpPointSearchSpaceData
+from . import distributions as dists
 from continuousresource.mathematicalprogramming.abstract \
     import LPWithSlack
 from continuousresource.mathematicalprogramming.eventorder \
@@ -271,114 +272,9 @@ class JumpPointSearchSpace(SearchSpace):
         """
         return generate_random_solution(self._precedences,
                                         nplannable=self.nplannable)
-
-    def get_neighbor_swap(self, swap_id=None):
-        """Finds candidate solutions by swapping adjacent event pairs.
-
-        Parameters
-        ----------
-        swap_id : int
-            Position of the first event in the event list that will
-            switch positions with its successor.
-
-        Returns
-        -------
-        SearchSpaceStateJumpPoint
-            New state for the search to continue with
-        int
-            ID of the first swapped event
-        """
-        self._operator_data["swap"]["performed"] += 1
-        self._operator_data["swap"]["succeeded"] += 1
-
-        # Find two events with no precedence relation to swap. The matrix
-        # of precedence relations contains at minimum the precedence
-        # between start and completion of the same job.
-        if swap_id is None:
-            swap_id = np.random.randint(
-                len(self._current_solution.instance['eventlist'] - 1)
-            )
-            job1 = self._current_solution.eventlist[swap_id, 1]
-            type1 = self._current_solution.eventlist[swap_id, 0]
-            job2 = self._current_solution.eventlist[swap_id + 1, 1]
-            type2 = self._current_solution.eventlist[swap_id + 1, 0]
-            e1 = job1 * 2 + type1
-            if type1 > 1:
-                e1 += self.nplannable - 2 + job1 * (self.kextra - 2)
-            e2 = job2 * 2 + type2
-            if type2 > 1:
-                e2 += self.nplannable - 2 + job2 * (self.kextra - 2)
-            while self._precedences[e1, e2]:
-                swap_id = np.random.randint(
-                    len(self._current_solution.instance['eventlist'] - 1)
-                )
-                job1 = self._current_solution.eventlist[swap_id, 1]
-                type1 = self._current_solution.eventlist[swap_id, 0]
-                job2 = self._current_solution.eventlist[swap_id + 1, 1]
-                type2 = self._current_solution.eventlist[swap_id + 1, 0]
-                e1 = job1 * 2 + type1
-                if type1 > 1:
-                    e1 += self.nplannable - 2 + job1 * (self.kextra - 2)
-                e2 = job2 * 2 + type2
-        else:
-            job1 = self._current_solution.eventlist[swap_id, 1]
-            type1 = self._current_solution.eventlist[swap_id, 0]
-            job2 = self._current_solution.eventlist[swap_id + 1, 1]
-            type2 = self._current_solution.eventlist[swap_id + 1, 0]
-            e1 = job1 * 2 + type1
-            if type1 > 1:
-                e1 += self.nplannable - 2 + job1 * (self.kextra - 2)
-            e2 = job2 * 2 + type2
-            if type2 > 1:
-                e2 += self.nplannable - 2 + job2 * (self.kextra - 2)
-            if self._precedences[e1, e2]:
-                return None, swap_id
-
-        new_state = self._current_solution.__copy__()
-        new_state.eventlist[[swap_id, swap_id + 1], :] = \
-            new_state.eventlist[[swap_id + 1, swap_id], :]
-        self._data.eventmap[
-            self._data.eventlist[swap_id, 1],
-            self._data.eventlist[swap_id, 0],
-        ] += 1
-        self._data.eventmap[
-            self._data.eventlist[swap_id + 1, 1],
-            self._data.eventlist[swap_id + 1, 0],
-        ] -= 1
-        self._data.eventlist[[swap_id, swap_id + 1], :] = \
-            self._data.eventlist[[swap_id + 1, swap_id], :]
-
-        new_score, new_slack = self._compute_current()
-        new_state.score = new_score + new_slack
-        new_state.slack = new_slack
-
-        return new_state, swap_id
-
-    def get_neighbor_swap_revert(self, new_state, swap_id):
-        """Reverts the model to its previous state.
-
-        Parameters
-        ----------
-        new_state : SearchSpaceStateJumpPoint
-            Reference to the state containing a link to the model that
-            should be reverted.
-        swap_id : int
-            ID of the first event to be swapped back.
-        """
-        self._operator_data["swap"]["succeeded"] -= 1
-        self._data.eventmap[
-            self._data.eventlist[swap_id, 1],
-            self._data.eventlist[swap_id, 0],
-        ] += 1
-        self._data.eventmap[
-            self._data.eventlist[swap_id + 1, 1],
-            self._data.eventlist[swap_id + 1, 0],
-        ] -= 1
-        self._data.eventlist[[swap_id, swap_id + 1], :] = \
-            self._data.eventlist[[swap_id + 1, swap_id], :]
         
 
-    def get_neighbor_move(self, orig_idx=None, dist='uniform'):
+    def get_neighbor_move(self, orig_idx=None, dist=uniform):
         """Finds candidate solutions by moving an event a random number
         of places in the event order, respecting precomputed precedence
         constraints.
@@ -387,12 +283,12 @@ class JumpPointSearchSpace(SearchSpace):
         ----------
         orig_idx : int
             Position of the event in the event list that will be moved.
-        dist : {'uniform', 'linear'}
+        dist : {uniform, linear, plus_one}
             Distribution used to define the probability for a relative
             displacement to be selected.
-                - 'uniform' selects any displacement with equal
+                - `uniform` selects any displacement with equal
                   probability.
-                - 'linear' selects a displacement with a probability that
+                - `linear` selects a displacement with a probability that
                   decreases linearly with increasing size.
 
         Returns
@@ -446,20 +342,10 @@ class JumpPointSearchSpace(SearchSpace):
 
         # If the range of possibilities is limited to the current
         # position, we select another job.
-        if rlimit - llimit <= 2:
+        new_idx = dists.dist(orig_idx, llimit, rlimit)
+
+        if new_idx < 0:
             return None, (orig_idx, orig_idx)
-        else:
-            new_idx = orig_idx
-            while new_idx == orig_idx:
-                if dist == 'uniform':
-                    new_idx = np.random.randint(
-                        llimit + 1,
-                        rlimit
-                    )
-                elif dist == 'linear':
-                    new_idx = self._get_idx_linear_displacement(
-                        orig_idx, llimit, rlimit
-                    )
 
         new_state = self._current_solution.__copy__()
 
@@ -602,235 +488,56 @@ class JumpPointSearchSpace(SearchSpace):
             else:
                 curr += 1
 
-    def get_neighbor_move_pair(self, job=None, dist='uniform'):
-        """Finds candidate solutions by moving two events, belonging to
-        the same job, a random number of places in the event order,
-        respecting precomputed precedence constraints.
+    def _get_neighbor_move_aggregate(self, temperature, dist='uniform'):
+        """Template method for finding candidate solutions.
 
         Parameters
         ----------
-        job : int
-            Index of the job of which both associated events (start and
-            completion) will be moved.
+        temperature : float
+            Current annealing temperature, used in determining if a
+            candidate with a lower objective should be accepted.
         dist : {'uniform', 'linear'}
-            Distribution used to define the probability for a relative
-            displacement to be selected.
-                - 'uniform' selects any displacement with equal
-                  probability.
-                - 'linear' selects a displacement with a probability that
-                  decreases linearly with increasing size.
+            Distribution used to select the distance moved.
 
         Returns
         -------
+        int
+            Number of candidate solutions that were considered, but
+            rejected.
         SearchSpaceState
-            New state for the search to continue with
-        tuple of int
-            Original indices of the job's events and the offset used to
-            move them.
-
-        Notes
-        -----
-        The maximum offset is currently limited by the relative distance
-        of the two events associated with a job. This restriction can be
-        lifted in the future, but the order of swaps then has to be
-        carefully chosen.
+            New state for the search to continue with.
         """
-        self._operator_data["movepair"]["performed"] += 1
-        self._operator_data["movepair"]["succeeded"] += 1
+        # Determine order
+        att_ord = np.random.permutation(
+            np.arange(len(self._current_solution.eventlist))
+        )
+        fail_count = 0
 
-        if job is None:
-            job = np.random.randint(
-                len(self._current_solution.instance['jobs'])
-            )
-        offset = 0
-
-        idx1 = self._current_solution.eventmap[job, 0]
-        idx2 = self._current_solution.eventmap[job, 1]
-
-        # Determine closest predecessor with a precedence relation
-        llimit1 = idx1
-        jobl1 = self._current_solution.eventlist[llimit1, 1]
-        typel1 = self._current_solution.eventlist[llimit1, 0]
-        ell1 = jobl1 * 2 + typel1
-        if typel1 > 1:
-            ell1 += self.nplannable - 2 + jobl1 * (self.kextra - 2)
-        while not (self._precedences[ell1, job * 2]):
-            llimit1 -= 1
-            if llimit1 == -1:
+        for idx in att_ord:
+            # Obtain a new state
+            new_state, revert_info = self.get_neighbor_move(orig_idx=idx,
+                                                            dist=dist)
+            if new_state is None:
+                fail_count += 1
+                continue
+            if new_state.score <= self._current_solution.score or \
+               np.random.random() <= math.exp((self._current_solution.score
+                                               - new_state.score)
+                                              / temperature):
+                if new_state.score < self._best_solution.score:
+                    self._best_solution = new_state.__copy__()
+                    self._best_solution.score = new_state.score
+                    self._best_solution.slack = new_state.slack
+                self._current_solution = new_state
                 break
-            jobl1 = self._current_solution.eventlist[llimit1, 1]
-            typel1 = self._current_solution.eventlist[llimit1, 0]
-            ell1 = jobl1 * 2 + typel1
-            if typel1 > 1:
-                ell1 += self.nplannable - 2 + jobl1 * (self.kextra - 2)
-        llimit2 = idx2
-        jobl2 = self._current_solution.eventlist[llimit2, 1]
-        typel2 = self._current_solution.eventlist[llimit2, 0]
-        ell2 = jobl2 * 2 + typel2
-        if typel2 > 1:
-            ell2 += self.nplannable - 2 + jobl2 * (self.kextra - 2)
-        while not (self._precedences[ell2, job * 2 + 1]):
-            llimit2 -= 1
-            if llimit2 == -1:
-                break
-            jobl2 = self._current_solution.eventlist[llimit2, 1]
-            typel2 = self._current_solution.eventlist[llimit2, 0]
-            ell2 = jobl2 * 2 + typel2
-            if typel2 > 1:
-                ell2 += self.nplannable - 2 + jobl2 * (self.kextra - 2)
-
-        # Determine closest successor with a precedence relation
-        rlimit1 = idx1
-        jobr1 = self._current_solution.eventlist[rlimit1, 1]
-        typer1 = self._current_solution.eventlist[rlimit1, 0]
-        erl1 = jobr1 * 2 + typer1
-        if typer1 > 1:
-            erl1 += self.nplannable - 2 + jobr1 * (self.kextra - 2)
-        while not (self._precedences[job * 2, erl1]):
-            rlimit1 += 1
-            if rlimit1 == len(self._current_solution.eventlist):
-                break
-            jobr1 = self._current_solution.eventlist[rlimit1, 1]
-            typer1 = self._current_solution.eventlist[rlimit1, 0]
-            erl1 = jobr1 * 2 + typer1
-            if typer1 > 1:
-                erl1 += self.nplannable - 2 + jobr1 * (self.kextra - 2)
-        rlimit2 = idx2
-        jobr2 = self._current_solution.eventlist[rlimit2, 1]
-        typer2 = self._current_solution.eventlist[rlimit2, 0]
-        erl2 = jobr2 * 2 + typer2
-        if typer2 > 1:
-            erl2 += self.nplannable - 2 + jobr2 * (self.kextra - 2)
-        while not (self._precedences[job * 2 + 1, erl2]):
-            rlimit2 += 1
-            if rlimit2 == len(self._current_solution.eventlist):
-                break
-            jobr2 = self._current_solution.eventlist[rlimit2, 1]
-            typer2 = self._current_solution.eventlist[rlimit2, 0]
-            erl2 = jobr2 * 2 + typer2
-            if typer2 > 1:
-                erl2 += self.nplannable - 2 + jobr2 * (self.kextra - 2)
-
-        llimit = max(llimit1 - idx1, llimit2 - idx2)
-        rlimit = min(rlimit1 - idx1, rlimit2 - idx2)
-
-        # If the range of possibilities is limited to the current
-        # position, we select another job.
-        if rlimit - llimit <= 2:
-            return None, (idx1, idx2, 0)
-        else:
-            while offset == 0:
-                if dist == 'uniform':
-                    offset = np.random.randint(
-                        llimit + 1,
-                        rlimit
-                    )
-                elif dist == 'linear':
-                    offset = self._get_idx_linear_displacement(
-                        0, llimit, rlimit
-                    )
-
-        new_state = self._current_solution.__copy__()
-
-        # Determine direction of movement
-        for idx in [idx1, idx2]:
-            curr = idx
-            if idx > idx + offset:
-                inv = -1
             else:
-                inv = 0
-            while curr != idx + offset:
-                new_state.instance['eventmap'][
-                    new_state.instance['eventlist'][curr + inv, 1],
-                    new_state.instance['eventlist'][curr + inv, 0]
-                ] += 1
-                new_state.instance['eventmap'][
-                    new_state.instance['eventlist'][curr + inv + 1, 1],
-                    new_state.instance['eventlist'][curr + inv + 1, 0]
-                ] -= 1
-                new_state.instance['eventlist'][[curr + inv,
-                                                 curr + inv + 1], :] = \
-                    new_state.instance['eventlist'][[curr + inv + 1,
-                                                     curr + inv], :]
+                # Change the model back (the same model instance is used
+                # for both the current and candidate solutions).
+                self.get_neighbor_move_revert(new_state, revert_info)
+                fail_count += 1
+                new_state = None
 
-                t_start = time.perf_counter()
-                self._lp_model.update_swap_neighbors(new_state.instance,
-                                                     curr + inv)
-                t_end = time.perf_counter()
-                self._timings["model_update"] += t_end - t_start
-
-                if inv < 0:
-                    curr -= 1
-                else:
-                    curr += 1
-
-        plan_part = self._compute_score_plannable_part(new_state.instance)
-        slack_part, slack = self._compute_score()
-        new_state.score = plan_part + slack_part
-        new_state.slack = slack
-
-        slack_estimate = self._estimate_score_slack_part(new_state.instance)
-        flow = EstimatingPenaltyFlow(new_state.instance, 'flow-test')
-        flow.solve()
-        sf = flow.compute_slack(new_state.instance['constants'][
-                            'slackpenalties'
-                        ])
-        slack_flow = sf[0][1] * sf[0][2] + sf[1][1] * sf[1][2] + \
-            sf[2][1] * sf[2][2]
-
-        with open(os.path.join(self._logdir, "compare_score.csv"), "a") as f:
-            f.write(
-                f'{plan_part + slack_part};{plan_part + slack_flow};'
-                f'{plan_part + slack_estimate};{plan_part}\n'
-            )
-
-        return new_state, (idx1, idx2, offset)
-
-    def get_neighbor_move_pair_revert(self, new_state, idcs):
-        """Reverts the model to its previous state.
-
-        Parameters
-        ----------
-        new_state : SearchSpaceState
-            Reference to the state containing a link to the model that
-            should be reverted.
-        idcs : Tuple
-            Tuple containing the original indices of the moved events and
-            the offset used to determine their new positions.
-        """
-        self._operator_data["movepair"]["succeeded"] -= 1
-
-        # Determine direction of movement
-        for idx in [idcs[0], idcs[1]]:
-            curr = idx + idcs[2]
-            if idx + idcs[2] > idx:
-                inv = -1
-            else:
-                inv = 0
-            while curr != idx:
-                new_state.instance['eventmap'][
-                    new_state.instance['eventlist'][curr + inv, 1],
-                    new_state.instance['eventlist'][curr + inv, 0]
-                ] += 1
-                new_state.instance['eventmap'][
-                    new_state.instance['eventlist'][curr + inv + 1, 1],
-                    new_state.instance['eventlist'][curr + inv + 1, 0]
-                ] -= 1
-                new_state.instance['eventlist'][[curr + inv,
-                                                 curr + inv + 1], :] = \
-                    new_state.instance['eventlist'][[curr + inv + 1,
-                                                     curr + inv], :]
-
-                t_start = time.perf_counter()
-                self._lp_model.update_swap_neighbors(new_state.instance,
-                                                     curr + inv)
-                t_end = time.perf_counter()
-                self._timings["model_update"] += t_end - t_start
-
-                if inv < 0:
-                    curr -= 1
-                else:
-                    curr += 1
+        return fail_count, new_state
 
     def random_walk(self, no_steps=100):
         """Performs a random walk from the current solution by swapping
@@ -916,237 +623,8 @@ class JumpPointSearchSpaceCombined(JumpPointSearchSpace):
         SearchSpaceState
             New state for the search to continue with.
         """
-        # Awful programming, but it works
-        frac = np.random.random()
-        if frac < self._fracs["swap"]:
-            fail_count, new_state = \
-                self._get_neighbor_swap_aggregate(temperature)
-            # if new_state is None:
-            #     fail_count1, new_state = \
-            #         self._get_neighbor_movelinear_aggregate(temperature)
-            #     fail_count += fail_count1
-            #     if new_state is None:
-            #         fail_count2, new_state = \
-            #             self._get_neighbor_move_pair_aggregate(temperature)
-            #         fail_count += fail_count2
-        elif frac < self._fracs["swap"] + self._fracs["move"]:
-            fail_count, new_state = \
-                self._get_neighbor_movelinear_aggregate(temperature)
-            if new_state is None:
-                fail_count1, new_state = \
-                    self._get_neighbor_swap_aggregate(temperature)
-                fail_count += fail_count1
-                if new_state is None:
-                    fail_count2, new_state = \
-                        self._get_neighbor_move_pair_aggregate(temperature)
-                    fail_count += fail_count2
-        else:
-            fail_count, new_state = \
-                self._get_neighbor_move_pair_aggregate(temperature)
-            if new_state is None:
-                fail_count1, new_state = \
-                    self._get_neighbor_swap_aggregate(temperature)
-                fail_count += fail_count1
-                if new_state is None:
-                    fail_count2, new_state = \
-                        self._get_neighbor_movelinear_aggregate(temperature)
-                    fail_count += fail_count2
-
-        return fail_count, new_state
-
-    def _get_neighbor_move_pair_aggregate(self, temperature):
-        """Template method for finding candidate solutions.
-
-        Parameters
-        ----------
-        temperature : float
-            Current annealing temperature, used in determining if a
-            candidate with a lower objective should be accepted.
-
-        Returns
-        -------
-        int
-            Number of candidate solutions that were considered, but
-            rejected.
-        SearchSpaceState
-            New state for the search to continue with.
-        """
-        # Determine order
-        att_ord = np.random.permutation(
-            np.arange(len(self._current_solution.instance['properties']))
-        )
-        fail_count = 0
-
-        for idx in att_ord:
-            # Obtain a new state
-            new_state, revert_info = self.get_neighbor_move_pair(job=idx)
-            if new_state is None:
-                fail_count += 1
-                continue
-            if new_state.score <= self._current_solution.score or \
-               np.random.random() <= math.exp((self._current_solution.score
-                                               - new_state.score)
-                                              / temperature):
-                if new_state.score < self._best_solution.score:
-                    self._best_solution = new_state.__copy__()
-                    self._best_solution.score = new_state.score
-                    self._best_solution.slack = new_state.slack
-                self._current_solution = new_state
-                break
-            else:
-                # Change the model back (the same model instance is used
-                # for both the current and candidate solutions).
-                self.get_neighbor_move_pair_revert(new_state, revert_info)
-                fail_count += 1
-                new_state = None
-
-        return fail_count, new_state
-
-    def _get_neighbor_moveuniform_aggregate(self, temperature):
-        """Template method for finding candidate solutions.
-
-        Parameters
-        ----------
-        temperature : float
-            Current annealing temperature, used in determining if a
-            candidate with a lower objective should be accepted.
-
-        Returns
-        -------
-        int
-            Number of candidate solutions that were considered, but
-            rejected.
-        SearchSpaceState
-            New state for the search to continue with.
-        """
-        # Determine order
-        att_ord = np.random.permutation(
-            np.arange(len(self._current_solution.eventlist))
-        )
-        fail_count = 0
-
-        for idx in att_ord:
-            # Obtain a new state
-            new_state, revert_info = self.get_neighbor_move(orig_idx=idx)
-            if new_state is None:
-                fail_count += 1
-                continue
-            if new_state.score <= self._current_solution.score or \
-               np.random.random() <= math.exp((self._current_solution.score
-                                               - new_state.score)
-                                              / temperature):
-                if new_state.score < self._best_solution.score:
-                    self._best_solution = new_state.__copy__()
-                    self._best_solution.score = new_state.score
-                    self._best_solution.slack = new_state.slack
-                self._current_solution = new_state
-                break
-            else:
-                # Change the model back (the same model instance is used
-                # for both the current and candidate solutions).
-                self.get_neighbor_move_revert(new_state, revert_info)
-                fail_count += 1
-                new_state = None
-
-        return fail_count, new_state
-
-    def _get_neighbor_movelinear_aggregate(self, temperature):
-        """Template method for finding candidate solutions.
-
-        Parameters
-        ----------
-        temperature : float
-            Current annealing temperature, used in determining if a
-            candidate with a lower objective should be accepted.
-
-        Returns
-        -------
-        int
-            Number of candidate solutions that were considered, but
-            rejected.
-        SearchSpaceState
-            New state for the search to continue with.
-        """
-        # Determine order
-        att_ord = np.random.permutation(
-            np.arange(len(self._current_solution.eventlist))
-        )
-        fail_count = 0
-
-        for idx in att_ord:
-            # Obtain a new state
-            new_state, revert_info = self.get_neighbor_move(orig_idx=idx,
-                                                            dist='linear')
-            if new_state is None:
-                fail_count += 1
-                continue
-            if new_state.score <= self._current_solution.score or \
-               np.random.random() <= math.exp((self._current_solution.score
-                                               - new_state.score)
-                                              / temperature):
-                if new_state.score < self._best_solution.score:
-                    self._best_solution = new_state.__copy__()
-                    self._best_solution.score = new_state.score
-                    self._best_solution.slack = new_state.slack
-                self._current_solution = new_state
-                break
-            else:
-                # Change the model back (the same model instance is used
-                # for both the current and candidate solutions).
-                self.get_neighbor_move_revert(new_state, revert_info)
-                fail_count += 1
-                new_state = None
-
-        return fail_count, new_state
-
-    def _get_neighbor_swap_aggregate(self, temperature):
-        """Template method for finding candidate solutions.
-
-        Parameters
-        ----------
-        temperature : float
-            Current annealing temperature, used in determining if a
-            candidate with a lower objective should be accepted.
-
-        Returns
-        -------
-        int
-            Number of candidate solutions that were considered, but
-            rejected.
-        SearchSpaceState
-            New state for the search to continue with.
-        """
-        # Determine order
-        att_ord = np.random.permutation(
-            # We cannot try the last one.
-            np.arange(len(self._current_solution.eventlist) - 1)
-        )
-        fail_count = 0
-
-        for idx in att_ord:
-            # Obtain a new state
-            new_state, revert_info = self.get_neighbor_swap(swap_id=idx)
-            if new_state is None:
-                fail_count += 1
-                continue
-            if new_state.score <= self._current_solution.score or \
-               np.random.random() <= math.exp((self._current_solution.score
-                                               - new_state.score)
-                                              / temperature):
-                if new_state.score < self._best_solution.score:
-                    self._best_solution = new_state.__copy__()
-                    self._best_solution.score = new_state.score
-                    self._best_solution.slack = new_state.slack
-                self._current_solution = new_state
-                break
-            else:
-                # Change the model back (the same model instance is used
-                # for both the current and candidate solutions).
-                self.get_neighbor_swap_revert(new_state, revert_info)
-                fail_count += 1
-                new_state = None
-
-        return fail_count, new_state
+        return self._get_neighbor_movelinear_aggregate(temperature,
+                                                       dist="linear")
 
 
 class SearchSpaceStateJumpPoint(SearchSpaceState):

@@ -147,14 +147,17 @@ class JumpPointSearchSpaceData():
         """
         self._jumppoint_map = np.zeros(shape=self._njobs, dtype=int)
         self._base_cost = 0
+        
+        completed = np.zeros(shape=self._njobs, dtype=bool)
 
         for [etype, job] in self._instance['eventlist']:
-            if etype > 1:
+            if etype > 1 and not completed[job]:
                 self._jumppoint_map[job] = etype - 1
             elif etype == 1:
                 self._base_cost += sum(self._instance['weights'][
                     job, :self._jumppoint_map[job] + 1
                 ])
+                completed[job] = True
         return self._base_cost
 
     def base_update_compute(self, event_idx, offset):
@@ -326,10 +329,14 @@ class JumpPointSearchSpaceData():
                 self._resource_availability_table[i] = \
                     self._resource_availability_table[i - 1]
 
-        return (min_lb + min_ub) * \
-            self._instance['constants']['slackpenalties'][1] + \
-            self._resource_availability_table[-1, 1] * \
-            self._instance['constants']['slackpenalties'][0]
+        return [
+            ("resource", self._resource_availability_table[-1, 1],
+             self._instance['constants']['slackpenalties'][0]),
+            ("upperbound", min_ub,
+             self._instance['constants']['slackpenalties'][1]),
+            ("lowerbound", min_lb,
+             self._instance['constants']['slackpenalties'][1])
+        ]
 
     def simple_update_compute(self):
         if not self._simple_valid:
@@ -339,10 +346,32 @@ class JumpPointSearchSpaceData():
             )
             self.simple_initiate()
             return
+
+        # Update the mapping for the closest fixed time events
+
+        # 1 & 2. Compute the lower/upper bound difference
+
+        # 3. Recompute the resource estimation
         pass
 
-    def simple_update_apply(self):
-        pass
+    def simple_update_apply(self, success=True):
+        """Apply or revert the changes of the corresponding update.
+
+        Parameters
+        ----------
+        success : boolean
+            Whether the update has been accepted or not. If true, the
+            changes will be applied, otherwise, they will be reverted.
+        """
+        if success:
+            # Keep changes, set flags.
+
+            self._flow_valid = False
+            self._lp_valid = False
+            raise NotImplementedError
+        else:
+            # Revert changes
+            raise NotImplementedError
 
     def flow_initiate(self):
         """Compute the flow approximation of the penalty term for the
@@ -353,12 +382,10 @@ class JumpPointSearchSpaceData():
         sol = self._flow_model.solve()
         if sol is None:
             return np.inf
-        self._flow_slack = self._flow_model.compute_slack(
+
+        return self._flow_model.compute_slack(
             self._instance['constants']['slackpenalties']
         )
-        return self._flow_slack[0][1] * self._flow_slack[0][2] + \
-            self._flow_slack[1][1] * self._flow_slack[1][2] + \
-            self._flow_slack[2][1] * self._flow_slack[2][2]
 
     def flow_update_compute(self):
         if not self._flow_valid:
@@ -371,7 +398,15 @@ class JumpPointSearchSpaceData():
             return
         raise NotImplementedError
 
-    def flow_update_apply(self):
+    def flow_update_apply(self, success=True):
+        """Apply or revert the changes of the corresponding update.
+
+        Parameters
+        ----------
+        success : boolean
+            Whether the update has been accepted or not. If true, the
+            changes will be applied, otherwise, they will be reverted.
+        """
         raise NotImplementedError
 
     def lp_initiate(self):
@@ -385,22 +420,36 @@ class JumpPointSearchSpaceData():
         if sol is None:
             return np.inf
 
-        return sol.get_objective_value()
-        # self._lp_slack = self._lp_model.compute_slack(
-        #     self._instance['constants']['slackpenalties']
-        # )
-        # return self._lp_slack[0][1] * self._lp_slack[0][2] + \
-        #     self._lp_slack[1][1] * self._lp_slack[1][2] + \
-        #     self._lp_slack[2][1] * self._lp_slack[2][2]
+        return self._lp_model.compute_slack(
+            self._instance['constants']['slackpenalties']
+        )
 
-    def lp_update_compute(self, event_idx, offset):
+    def lp_update_compute(self, event_idx, new_idx):
         if not self._lp_valid:
             warnings.warn(
                 "Trying to update a non-valid state of the LP for the"
                 " penalty term computation. Performing a full recompute"
                 " instead."
             )
-            self.lp_initiate()
-            return
+            return self.lp_initiate()
         raise NotImplementedError
         pass
+
+    def lp_update_apply(self, success=True):
+        """Apply or revert the changes of the corresponding update.
+
+        Parameters
+        ----------
+        success : boolean
+            Whether the update has been accepted or not. If true, the
+            changes will be applied, otherwise, they will be reverted.
+        """
+        if success:
+            # Keep changes, set flags.
+
+            self._simple_valid = False
+            self._flow_valid = False
+            raise NotImplementedError
+        else:
+            # Revert changes
+            raise NotImplementedError

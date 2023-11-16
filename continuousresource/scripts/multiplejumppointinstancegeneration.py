@@ -103,9 +103,9 @@ def main(exportpath, exportformat, label):
         csv.write(
             'n;r;k;serialID;feasible\n'
         )
-        for n in [5, 10, 15, 20, 30, 50, 100, 200, 300]:
-            for r in [25.0, 50.0, 100.0, 200.0]:
-                for k in [3, 4, 5]:
+        for n in [5, 10, 15, 20, 30, 50]:
+            for r in [50.0]:
+                for k in [2, 3, 4]:
                     for i in range(4):
                         instance = JumpPointInstance.generate_instance(
                             n, r, k, params=params[str(n)]

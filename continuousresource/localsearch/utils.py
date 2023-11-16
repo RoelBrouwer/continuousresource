@@ -150,3 +150,25 @@ def sanitize_search_space_params(params):
         sanitized_params['start_solution'] = "greedy"
 
     return sanitized_params
+
+
+def get_slack_value(slack_list):
+    """Computes the slack value from a list of slack variable weight-
+    value pairs.
+
+    Parameters
+    ----------
+    slack_list : list of tuple
+        List of tuples of length 3, each representing a separate type of
+        slack/penalty. In first position the label of that slack type, in
+        second position the summed value of slackvariables of that type,
+        and in third position the multiplication factor for that type of
+        slack.
+
+    Returns
+    -------
+    float
+        Value of the penalty term.
+    """
+    return sum([val * weight for (_, val, weight) in slack_list])
+
