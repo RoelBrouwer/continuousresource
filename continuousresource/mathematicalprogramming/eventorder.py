@@ -773,7 +773,7 @@ class EventOrderMixedModel(MIP, EventOrderLinearModel):
         self._problem.add_constraint(
             ct=self._problem.sum(
                 (self._avar[i, i3] - self._avar[i2, i3])
-                for i3 in range(self._plannable)
+                for i3 in range(self._nplannable)
             ) - 1 + (1 - self._bvar[i, i2]) * self._bigM >= 0,
             ctname=f"Successor_variable_backward_b_{i},{i2}"
         )
