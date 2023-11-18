@@ -425,6 +425,19 @@ class JumpPointSearchSpaceData():
         )
 
     def lp_update_compute(self, event_idx, new_idx):
+        """Computes the new penalty term for the event order where the
+        event at `event_idx` is moved to `new_idx`.
+
+        Parameters
+        ----------
+        event_idx : int
+            Original position of the moved event
+        new_idx : int
+            New position of the moved event
+
+        Returns
+        -------
+        """
         if not self._lp_valid:
             warnings.warn(
                 "Trying to update a non-valid state of the LP for the"
@@ -432,24 +445,98 @@ class JumpPointSearchSpaceData():
                 " instead."
             )
             return self.lp_initiate()
-        raise NotImplementedError
-        pass
 
-    def lp_update_apply(self, success=True):
+        job = self._instance['eventlist'][event_idx, 1]
+        etype = self._instance['eventlist'][event_idx, 0]
+
+        # Determine id of current event
+        orig_id = job * 2 + etype
+        if etype > 1:
+            orig_id += self._nplannable - 2 + job * (self._kextra - 2)
+
+        curr = orig_idx
+        inv = 0
+        # Invert movement direction
+        if event_idx > new_idx:
+            inv = -1
+        while curr - new_idx != 0:
+            self._instance['eventmap'][
+                self._instance['eventlist'][curr + inv, 1],
+                self._instance['eventlist'][curr + inv, 0]
+            ] += 1
+            self._instance['eventmap'][
+                self._instance['eventlist'][curr + inv + 1, 1],
+                self._instance['eventlist'][curr + inv + 1, 0]
+            ] -= 1
+            self._instance['eventlist'][[curr + inv,
+                                         curr + inv + 1], :] = \
+                self._instance['eventlist'][[curr + inv + 1,
+                                             curr + inv], :]
+
+            # t_start = time.perf_counter()
+            self._lp_model.update_swap_neighbors(self._instance,
+                                                 curr + inv)
+            # t_end = time.perf_counter()
+            # self._timings["model_update"] += t_end - t_start
+
+            if inv < 0:
+                curr -= 1
+            else:
+                curr += 1
+
+        sol = self._lp_model.solve()
+        if sol is None:
+            return np.inf
+
+        return self._lp_model.compute_slack(
+            self._instance['constants']['slackpenalties']
+        )
+
+    def lp_update_apply(self, event_idx, new_idx, success=True):
         """Apply or revert the changes of the corresponding update.
 
         Parameters
         ----------
+        event_idx : int
+            Original position of the moved event
+        new_idx : int
+            New position of the moved event
         success : boolean
             Whether the update has been accepted or not. If true, the
             changes will be applied, otherwise, they will be reverted.
         """
         if success:
             # Keep changes, set flags.
-
             self._simple_valid = False
             self._flow_valid = False
-            raise NotImplementedError
         else:
             # Revert changes
-            raise NotImplementedError
+            curr = new_idx
+            inv = 0
+            # Invert movement direction
+            if new_idx > event_idx:
+                inv = -1
+            while curr - event_idx != 0:
+                self._instance['eventmap'][
+                    self._instance['eventlist'][curr + inv, 1],
+                    self._instance['eventlist'][curr + inv, 0]
+                ] += 1
+                self._instance['eventmap'][
+                    self._instance['eventlist'][curr + inv + 1, 1],
+                    self._instance['eventlist'][curr + inv + 1, 0]
+                ] -= 1
+                self._instance['eventlist'][[curr + inv,
+                                             curr + inv + 1], :] = \
+                    self._instance['eventlist'][[curr + inv + 1,
+                                                 curr + inv], :]
+
+                # t_start = time.perf_counter()
+                self._lp_model.update_swap_neighbors(self._instance,
+                                                     curr + inv)
+                # t_end = time.perf_counter()
+                # self._timings["model_update"] += t_end - t_start
+
+                if inv < 0:
+                    curr -= 1
+                else:
+                    curr += 1
