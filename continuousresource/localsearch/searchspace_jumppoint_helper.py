@@ -238,6 +238,15 @@ class JumpPointSearchSpaceData():
             - Estimation of the lower bound violations;
             - Estimation of the upper bound violations;
             - Estimation of the resource availability violations.
+
+        Returns
+        -------
+        list of tuple
+            List of tuples of length 3, each representing a separate type
+            of slack/penalty. In first position the label of that slack
+            type, in second position the summed value of slackvariables
+            of that type, and in third position the multiplication factor
+            for that type of slack.
         """
         self._simple_valid = True
         self._fixed_predecessor_map = np.zeros(shape=self._nplannable,
@@ -264,46 +273,9 @@ class JumpPointSearchSpaceData():
         min_ub = 0
 
         for job in range(self._njobs):
-            pre_start = self._fixed_predecessor_map[2 * job] \
-                - self._nplannable
-            pre_compl = self._fixed_predecessor_map[2 * job + 1] \
-                - self._nplannable
-            suc_start = self._fixed_successor_map[2 * job] \
-                - self._nplannable
-            suc_compl = self._fixed_successor_map[2 * job + 1] \
-                - self._nplannable
-            # etype -> x % self._kextra + 1
-            # job -> math.floor(x / self._kextra)
-            if pre_compl > -1 and suc_start > -1:
-                min_lb += max(
-                    0,
-                    (
-                        self._instance['jumppoints'][
-                            math.floor(pre_compl / self._kextra),
-                            pre_compl % self._kextra + 1] -
-                        self._instance['jumppoints'][
-                            math.floor(suc_start / self._kextra),
-                            suc_start % self._kextra + 1]
-                    ) * self._instance['properties'][job, 1] -
-                    self._instance['properties'][job, 0]
-                )
-            if pre_start < 0:
-                t_s = self._instance['jumppoints'][job, 0]
-            else:
-                t_s = self._instance['jumppoints'][
-                    math.floor(pre_start / self._kextra),
-                    pre_start % self._kextra + 1]
-            if suc_compl < 0:
-                t_e = self._instance['jumppoints'][job, -1]
-            else:
-                t_e = self._instance['jumppoints'][
-                    math.floor(suc_compl / self._kextra),
-                    suc_compl % self._kextra + 1]
-            min_ub += max(
-                0,
-                self._instance['properties'][job, 0] -
-                self._instance['properties'][job, 2] * (t_e - t_s)
-            )
+            add_min_lb, add_min_ub = self._bound_contributions(job)
+            min_lb += add_min_lb
+            min_ub += add_min_ub
 
         # 3. Compute the resource estimation
         self._resource_availability_table = np.zeros(shape=(self._nevents, 2),
@@ -338,21 +310,100 @@ class JumpPointSearchSpaceData():
              self._instance['constants']['slackpenalties'][1])
         ]
 
-    def simple_update_compute(self):
+    def simple_update_compute(self, event_idx, new_idx):
+        """Computes the change in the penalty term for the event order
+        where the event at `event_idx` is moved to `new_idx`.
+
+        Parameters
+        ----------
+        event_idx : int
+            Original position of the moved event
+        new_idx : int
+            New position of the moved event
+
+        Returns
+        -------
+        list of tuple
+            List of tuples of length 3, each representing a separate type
+            of slack/penalty. In first position the label of that slack
+            type, in second position the change in the summed value of
+            slackvariables of that type, and in third position the
+            multiplication factor for that type of slack.
+        """
         if not self._simple_valid:
             warnings.warn(
                 "Trying to update a non-valid state for the simple penalty"
                 " term estimation. Performing a full recompute instead."
             )
-            self.simple_initiate()
-            return
+            return self.simple_initiate()
+
+        job = self._instance['eventlist'][event_idx, 1]
+        etype = self._instance['eventlist'][event_idx, 0]
+
+        if etype > 1:
+            warnings.warn(
+                "Trying to move a fixed-time event. This should not be"
+                "possible."
+            )
+            return [
+                ("resource", 0,
+                 self._instance['constants']['slackpenalties'][0]),
+                ("upperbound", 0,
+                 self._instance['constants']['slackpenalties'][1]),
+                ("lowerbound", 0,
+                 self._instance['constants']['slackpenalties'][1])
+            ]
+
+        # Determine id of current event
+        orig_id = job * 2 + etype
 
         # Update the mapping for the closest fixed time events
+        new_pred = -1
+        if event_idx > 0:
+            pred_job = self._instance['eventlist'][event_idx - 1, 1]
+            pred_etype = self._instance['eventlist'][event_idx - 1, 0]
+            if pred_etype <= 1:
+                new_pred = \
+                    self._fixed_predecessor_map[pred_job * 2 + pred_etype]
+            else:
+                new_pred = self._nplannable + \
+                    self._kextra * pred_job + pred_etype - 2
+
+        new_succ = -1
+        if event_idx < self._nevents - 1 :
+            succ_job = self._instance['eventlist'][event_idx + 1, 1]
+            succ_etype = self._instance['eventlist'][event_idx + 1, 0]
+            if succ_etype <= 1:
+                new_succ = \
+                    self._fixed_successor_map[succ_job * 2 + succ_etype]
+            else:
+                new_succ = self._nplannable + \
+                    self._kextra * succ_job + succ_etype - 2
 
         # 1 & 2. Compute the lower/upper bound difference
+        old_min_lb, old_min_ub = self._bound_contributions(job)
+        if etype == 0:
+            new_min_lb, new_min_ub = self._bound_contributions(
+                job, pre_start=new_pred, suc_start=new_succ
+            )
+        elif etype == 1:
+            new_min_lb, new_min_ub = self._bound_contributions(
+                job, pre_compl=new_pred, suc_compl=new_succ
+            )
+            
+        
 
         # 3. Recompute the resource estimation
-        pass
+        # TODO
+
+        return [
+            ("resource", 0,
+             self._instance['constants']['slackpenalties'][0]),
+            ("upperbound", new_min_ub - old_min_ub,
+             self._instance['constants']['slackpenalties'][1]),
+            ("lowerbound", new_min_lb - old_min_lb,
+             self._instance['constants']['slackpenalties'][1])
+        ]
 
     def simple_update_apply(self, success=True):
         """Apply or revert the changes of the corresponding update.
@@ -372,6 +423,93 @@ class JumpPointSearchSpaceData():
         else:
             # Revert changes
             raise NotImplementedError
+
+    def _bound_contributions(job, pre_start=None, pre_compl=None,
+                             suc_start=None, suc_compl=None):
+        """Compute contributions of a job to lower and upper bound
+        penalty term estimations. Uses the fixed maps, unless explicitly
+        overridden.
+
+        Parameters
+        ----------
+        job : int
+        pre_start : int
+            ID of the first fixed time event before the start event.
+        pre_compl : int
+            ID of the first fixed time event before the completion event.
+        suc_start : int
+            ID of the first fixed time event after the start event.
+        suc_compl : int
+            ID of the first fixed time event after the completion event.
+
+        Returns
+        -------
+        float
+            Contribution to lower bound penalty term.
+        float
+            Contribution to upper bound penalty term.
+        """
+        if pre_start is None:
+            pre_start = self._fixed_predecessor_map[2 * job] \
+                - self._nplannable
+        else:
+            pre_start -= self._nplannable
+        if pre_compl is None:
+            pre_compl = self._fixed_predecessor_map[2 * job + 1] \
+                - self._nplannable
+        else:
+            pre_compl -= self._nplannable
+        if suc_start is None:
+            suc_start = self._fixed_successor_map[2 * job] \
+                - self._nplannable
+        else:
+            suc_start -= self._nplannable
+        if suc_compl is None:
+            suc_compl = self._fixed_successor_map[2 * job + 1] \
+                - self._nplannable
+        else:
+            suc_compl -= self._nplannable
+
+        # etype -> x % self._kextra + 1
+        # job -> math.floor(x / self._kextra)
+        if pre_compl > -1 and suc_start > -1:
+            min_lb = max(
+                0,
+                (
+                    self._instance['jumppoints'][
+                        math.floor(pre_compl / self._kextra),
+                        pre_compl % self._kextra + 1] -
+                    self._instance['jumppoints'][
+                        math.floor(suc_start / self._kextra),
+                        suc_start % self._kextra + 1]
+                ) * self._instance['properties'][job, 1] -
+                self._instance['properties'][job, 0]
+            )
+        if pre_start < 0:
+            t_s = self._instance['jumppoints'][job, 0]
+        else:
+            t_s = max(
+                self._instance['jumppoints'][job, 0],
+                self._instance['jumppoints'][
+                    math.floor(pre_start / self._kextra),
+                    pre_start % self._kextra + 1]
+            )
+        if suc_compl < 0:
+            t_e = self._instance['jumppoints'][job, -1]
+        else:
+            t_e = min(
+                self._instance['jumppoints'][job, -1],
+                self._instance['jumppoints'][
+                    math.floor(suc_compl / self._kextra),
+                    suc_compl % self._kextra + 1]
+            )
+        min_ub = max(
+            0,
+            self._instance['properties'][job, 0] -
+            self._instance['properties'][job, 2] * (t_e - t_s)
+        )
+
+        return min_lb, min_ub
 
     def flow_initiate(self):
         """Compute the flow approximation of the penalty term for the
@@ -412,6 +550,15 @@ class JumpPointSearchSpaceData():
     def lp_initiate(self):
         """Compute the penalty term in the LP for the current event
         order.
+
+        Returns
+        -------
+        list of tuple
+            List of tuples of length 3, each representing a separate type
+            of slack/penalty. In first position the label of that slack
+            type, in second position the summed value of slackvariables
+            of that type, and in third position the multiplication factor
+            for that type of slack.
         """
         self._lp_valid = True
         self._lp_model = JumpPointContinuousLPWithSlack(self._instance,
@@ -437,6 +584,12 @@ class JumpPointSearchSpaceData():
 
         Returns
         -------
+        list of tuple
+            List of tuples of length 3, each representing a separate type
+            of slack/penalty. In first position the label of that slack
+            type, in second position the summed value of slackvariables
+            of that type, and in third position the multiplication factor
+            for that type of slack.
         """
         if not self._lp_valid:
             warnings.warn(
