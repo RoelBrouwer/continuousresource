@@ -224,13 +224,11 @@ class EventOrderLinearModel(LP):
         if type1 < 2 and type2 < 2:
             if isinstance(self._c_availability[e2],
                           docplex.mp.constr.LinearConstraint):
-                self._c_availability[e2].lhs = \
-                    self._problem.sum(
-                        self._pvar[j, e2] for j in range(self._njobs)
-                    ) - self._resource * (self._tvar[e1] - self._tvar[e2])
-            else:
-                self._c_availability[e2] = \
-                    self._add_interval_capacity_constraint(e2, e1)
+                self._problem.remove_constraints([
+                    self._c_availability[e2]
+                ])
+            self._c_availability[e2] = \
+                self._add_interval_capacity_constraint(e2, e1)
 
         if e3 > -1:
             self._c_availability[e1].lhs = \
@@ -256,7 +254,7 @@ class EventOrderLinearModel(LP):
             # 6. Upper bound
             upper_bound = self._get_upper_bound(job1, instance)
             self._c_upper[job1, e2] = self._add_upper_bound_constraint(
-                job1, e2, e1, lower_bound
+                job1, e2, e1, upper_bound
             )
             # In addition, the time variables need to be updated in two
             # more constraints.
@@ -334,6 +332,8 @@ class EventOrderLinearModel(LP):
         # For any other job to be active, both e0 and e3 need to exist.
         if e0 > -1 and e3 > -1:
             for j in range(self._njobs):
+                if j in [job1, job2]:
+                    continue
                 if instance['eventmap'][j, 0] < first_idx \
                    and instance['eventmap'][j, 1] > first_idx + 1:
                     lower_bound = self._get_lower_bound(j, instance)
@@ -1986,8 +1986,6 @@ class JumpPointContinuousLPWithSlack(LPWithSlack, JumpPointContinuousLP):
         # update appropriate self._c_availability
         if e0 > -1:
             self._c_availability[e0].lhs -= self._stvar[e0]
-        if type1 < 2 and type2 < 2:
-            self._c_availability[e2].lhs -= self._stvar[e2]
         if e3 > -1:
             self._c_availability[e1].lhs -= self._stvar[e1]
 
@@ -2055,6 +2053,21 @@ class JumpPointContinuousLPWithSlack(LPWithSlack, JumpPointContinuousLP):
             assert e0 > -1
             self._c_lower[job2, e0].lhs += self._slvar[job2, e0]
             self._c_upper[job2, e0].lhs -= self._suvar[job2, e0]
+
+        # Update bounds for all other jobs that are active
+        # For any other job to be active, both e0 and e3 need to exist.
+        if e0 > -1 and e3 > -1:
+            for j in range(self._njobs):
+                if j in [job1, job2]:
+                    continue
+                if instance['eventmap'][j, 0] < first_idx \
+                   and instance['eventmap'][j, 1] > first_idx + 1:
+                    self._c_lower[j, e0].lhs += self._slvar[j, e0]
+                    self._c_lower[j, e2].lhs += self._slvar[j, e2]
+                    self._c_lower[j, e1].lhs += self._slvar[j, e1]
+                    self._c_upper[j, e0].lhs -= self._suvar[j, e0]
+                    self._c_upper[j, e2].lhs -= self._suvar[j, e2]
+                    self._c_upper[j, e1].lhs -= self._suvar[j, e1]
 
     def _define_variable_arrays(self, instance):
         """Defines the arrays organizing all decision variables in the
