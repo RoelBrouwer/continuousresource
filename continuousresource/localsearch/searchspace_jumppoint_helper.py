@@ -384,6 +384,8 @@ class JumpPointSearchSpaceData():
             new_min_lb, new_min_ub = self._bound_contributions(
                 job, pre_compl=new_pred, suc_compl=new_succ
             )
+        self._fixed_predecessor_map[job * 2 + etype] = new_pred
+        self._fixed_successor_map[job * 2 + etype] = new_succ
 
         # 3. Recompute the resource estimation
         # Update the eventlist AND eventmap
@@ -428,19 +430,19 @@ class JumpPointSearchSpaceData():
         """
         if success:
             # Keep changes, set flags.
-            job = self._instance['eventlist'][event_idx, 1]
-            etype = self._instance['eventlist'][event_idx, 0]
-
-            # Update the mapping for the closest fixed time events
-            new_pred, new_succ = self._get_new_neighbors(event_idx, new_idx)
-            self._fixed_predecessor_map[job * 2 + etype] = new_pred
-            self._fixed_successor_map[job * 2 + etype] = new_succ
-
             self._simple_valid = True
             self._flow_valid = False
             self._lp_valid = False
         else:
             # Revert changes
+            job = self._instance['eventlist'][new_idx, 1]
+            etype = self._instance['eventlist'][new_idx, 0]
+
+            # Update the mapping for the closest fixed time events
+            new_pred, new_succ = self._get_new_neighbors(new_idx, event_idx)
+            self._fixed_predecessor_map[job * 2 + etype] = new_pred
+            self._fixed_successor_map[job * 2 + etype] = new_succ
+
             self.instance_update(new_idx, event_idx)
 
             first = min(event_idx, new_idx)
@@ -665,7 +667,14 @@ class JumpPointSearchSpaceData():
                                                         'lp-test')
         sol = self._lp_model.solve()
         if sol is None:
-            return np.inf
+            return [
+                ("resource", np.inf,
+                 self._instance['constants']['slackpenalties'][0]),
+                ("upperbound", np.inf,
+                 self._instance['constants']['slackpenalties'][1]),
+                ("lowerbound", np.inf,
+                 self._instance['constants']['slackpenalties'][1])
+            ]
 
         return self._lp_model.compute_slack(
             self._instance['constants']['slackpenalties']
@@ -739,7 +748,14 @@ class JumpPointSearchSpaceData():
 
         sol = self._lp_model.solve()
         if sol is None:
-            return np.inf
+            return [
+                ("resource", np.inf,
+                 self._instance['constants']['slackpenalties'][0]),
+                ("upperbound", np.inf,
+                 self._instance['constants']['slackpenalties'][1]),
+                ("lowerbound", np.inf,
+                 self._instance['constants']['slackpenalties'][1])
+            ]
 
         return self._lp_model.compute_slack(
             self._instance['constants']['slackpenalties']

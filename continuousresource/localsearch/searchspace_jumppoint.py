@@ -652,7 +652,7 @@ class JumpPointSearchSpaceTest(JumpPointSearchSpace):
         orig_eventlist = self._data.eventlist.copy()
         orig_eventmap = self._data.eventmap.copy()
         curr_score = self.initial.score - get_slack_value(self.initial.slack)
-        curr_slack = self.initial.slack
+        curr_simple_slack = self._data.simple_initiate()
         with open(os.path.join(self._logdir,
                                "compare_score.csv"), "w") as f:
             f.write(
@@ -712,7 +712,7 @@ class JumpPointSearchSpaceTest(JumpPointSearchSpace):
 
                 # Compute the updated simple score, apply: false
                 t_4 = time.perf_counter()
-                slack_simple_update = get_slack_value(curr_slack) + \
+                slack_simple_update = get_slack_value(curr_simple_slack) + \
                     get_slack_value(
                         self._data.simple_update_compute(orig_idx, new_idx)
                     )
@@ -754,8 +754,9 @@ class JumpPointSearchSpaceTest(JumpPointSearchSpace):
 
                 # Compute initial simple score
                 t_12 = time.perf_counter()
+                new_simple_slack = self._data.simple_initiate()
                 simple_slack_init = get_slack_value(
-                    self._data.simple_initiate()
+                    new_simple_slack
                 )
                 t_13 = time.perf_counter()
                 t_simple_init = t_13 - t_12
@@ -801,7 +802,7 @@ class JumpPointSearchSpaceTest(JumpPointSearchSpace):
                     "Recompute and update of LP slack give different results."
                 assert np.isclose(slack_simple_update, simple_slack_init), \
                     ("Recompute and update of simple slack give different"
-                     f" results: {i} {slack_simple_update}, {simple_slack_init}, {lp_slack_init}")
+                     " results.")
 
                 # Collect timing and scores in log file
                 f.write(
@@ -815,7 +816,7 @@ class JumpPointSearchSpaceTest(JumpPointSearchSpace):
                 # Decide on keeping or reverting
                 if not np.isinf(lp_slack_init):
                     curr_score = new_score
-                    curr_slack = new_slack
+                    curr_simple_slack = new_simple_slack
                     orig_eventlist = inst_eventlist
                     orig_eventmap = inst_eventmap
                 else:
