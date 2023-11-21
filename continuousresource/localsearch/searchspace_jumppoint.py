@@ -9,6 +9,7 @@ from .eventorder_utils import construct_event_mapping, find_precedences, \
     generate_initial_solution, generate_random_solution
 from .searchspace_abstract import SearchSpace, SearchSpaceState
 from .searchspace_jumppoint_helper import JumpPointSearchSpaceData
+from .utils import get_slack_value
 from . import distributions as dists
 from continuousresource.mathematicalprogramming.abstract \
     import LPWithSlack
@@ -41,35 +42,8 @@ class JumpPointSearchSpace(SearchSpace):
     def __init__(self, instance, params=None):
         self._logdir = params['logdir']
         self._data = JumpPointSearchSpaceData(instance)
-        with open(os.path.join(self._logdir,
-                               "compare_score.csv"), "w") as f:
-            f.write(
-                'score;flow_estimate;linear_estimate;planned_part;lp_time;'
-                'flow_time;simple_time;det_time\n'
-            )
         super().__init__(instance, params=params)
         self._label = "jumppoint-superclass"
-        self._operator_data = {
-            "swap": {
-                "performed": 0,
-                "succeeded": 0
-            },
-            "move": {
-                "performed": 0,
-                "succeeded": 0
-            },
-            "movepair": {
-                "performed": 0,
-                "succeeded": 0
-            },
-        }
-
-    @property
-    def operator_data(self):
-        """Dictionary containing data on the neighborhood operators that
-        have been applied.
-        """
-        return self._operator_data
 
     @property
     def nevents(self):
@@ -90,6 +64,13 @@ class JumpPointSearchSpace(SearchSpace):
     @property
     def lp(self):
         return self._data.lp_model
+
+    @property
+    def operator_data(self):
+        """Dictionary containing data on the neighborhood operators that
+        have been applied.
+        """
+        return {}
 
     def _find_precedences(self, instance, infer_precedence):
         """Construct an array indicating precedence relations between
@@ -148,15 +129,8 @@ class JumpPointSearchSpace(SearchSpace):
                     JumpPointContinuousLPWithSlack(dummy_instance,
                                                    "construct_initial")
             sol = init_lp.solve()
-            initial_slack = []
-            if sol is not None:
-                initial_score = sol.get_objective_value()
-                if isinstance(init_lp, LPWithSlack):
-                    initial_slack = init_lp.compute_slack(
-                        instance['constants']['slackpenalties']
-                    )
-            else:
-                initial_score = np.inf
+            if sol is None:
+                raise RuntimeError("No initial solution found.")
             self._data.eventlist = self._construct_eventlist(
                 init_lp.get_schedule(),
                 instance['jumppoints'][:, 1:-1].flatten()
@@ -174,16 +148,22 @@ class JumpPointSearchSpace(SearchSpace):
         kjumps = instance['jumppoints'].shape[1]
         self._data.eventmap = construct_event_mapping(self._data.eventlist,
                                                       (njobs, kjumps))
+        self._data.simple_initiate()
 
         # Initialize states
-        self._current_solution = SearchSpaceStateJumpPoint(self._data.eventlist)
+        self._current_solution = SearchSpaceStateJumpPoint(
+            self._data.eventlist
+        )
         self._best_solution = self._current_solution.__copy__()
         self._initial_solution = self._current_solution.__copy__()
 
         # Compute and register score
-        initial_score, initial_slack = self._compute_current()
+        initial_slack = self._data.lp_initiate()
+        initial_score = self._data.base_initiate() + \
+            get_slack_value(initial_slack)
         self._current_solution.score = initial_score
         self._current_solution.slack = initial_slack
+        self._current_solution.eventlist = None
         self._best_solution.score = initial_score
         self._best_solution.slack = initial_slack
         self._initial_solution.score = initial_score
@@ -257,7 +237,6 @@ class JumpPointSearchSpace(SearchSpace):
                 f'{t_5-t_4};{t_4 - t_3};{t_3 - t_2};{t_2 - t_1}\n'
             )
         return base_score, lp_slack
-        
 
     def get_random_order(self):
         """Returns a random event order that respects (precomputed)
@@ -272,9 +251,8 @@ class JumpPointSearchSpace(SearchSpace):
         """
         return generate_random_solution(self._precedences,
                                         nplannable=self.nplannable)
-        
 
-    def get_neighbor_move(self, orig_idx=None, dist=uniform):
+    def get_neighbor_move(self, orig_idx=None, dist=dists.uniform):
         """Finds candidate solutions by moving an event a random number
         of places in the event order, respecting precomputed precedence
         constraints.
@@ -283,7 +261,7 @@ class JumpPointSearchSpace(SearchSpace):
         ----------
         orig_idx : int
             Position of the event in the event list that will be moved.
-        dist : {uniform, linear, plus_one}
+        dist : {dists.uniform, dists.linear, dists.plus_one}
             Distribution used to define the probability for a relative
             displacement to be selected.
                 - `uniform` selects any displacement with equal
@@ -342,7 +320,7 @@ class JumpPointSearchSpace(SearchSpace):
 
         # If the range of possibilities is limited to the current
         # position, we select another job.
-        new_idx = dists.dist(orig_idx, llimit, rlimit)
+        new_idx = dist(orig_idx, llimit, rlimit)
 
         if new_idx < 0:
             return None, (orig_idx, orig_idx)
@@ -623,8 +601,229 @@ class JumpPointSearchSpaceCombined(JumpPointSearchSpace):
         SearchSpaceState
             New state for the search to continue with.
         """
-        return self._get_neighbor_movelinear_aggregate(temperature,
-                                                       dist="linear")
+        return self._get_neighbor_move_aggregate(temperature,
+                                                 dist=dists.linear)
+
+
+class JumpPointSearchSpaceTest(JumpPointSearchSpace):
+    """Search space used to check the correctness of the implementation
+    of a number of helper functions.
+
+    Parameters
+    ----------
+    instance : Dict of ndarray
+        Dictionary containing the instance data.
+    params : Dict
+        Dictionary containing parameters defining the search space, with
+        the following keys:
+            - `infer_precedence` (bool): Flag indicating whether to infer
+              and continuously check (implicit) precedence relations.
+
+    Notes
+    -----
+    This class abuses the implementation of the search space, for the
+    purpose of checking the speed and correctness of parts of the
+   implementation. DO NOT use this as a template for another search
+   space subclass.
+    """
+    def __init__(self, instance, params=None):
+        super().__init__(instance, params=params)
+        self._fracs = params["fracs"]
+        self._label = "test"
+
+    def get_neighbor(self, temperature):
+        """Template method for finding candidate solutions.
+
+        Parameters
+        ----------
+        temperature : float
+            Current annealing temperature, used in determining if a
+            candidate with a lower objective should be accepted.
+
+        Returns
+        -------
+        int
+            Number of candidate solutions that were considered, but
+            rejected.
+        SearchSpaceState
+            New state for the search to continue with.
+        """
+        # We will only do one call to get_neighbor.
+        orig_eventlist = self._data.eventlist.copy()
+        orig_eventmap = self._data.eventmap.copy()
+        curr_score = self.initial.score - get_slack_value(self.initial.slack)
+        curr_slack = self.initial.slack
+        with open(os.path.join(self._logdir,
+                               "compare_score.csv"), "w") as f:
+            f.write(
+                'base_score;lp_score;flow_score;simple_score;base_time;'
+                'base_update_time;lp_time;lp_update_time;flow_time;'
+                'simple_time;simple_update_time\n'
+            )
+            # For each iteration we will
+            for i in range(1000):
+                # Generate a new candidate solution.
+                new_idx = -1
+                while new_idx < 0:
+                    orig_job = np.random.randint(self.njobs)
+                    orig_etype = np.random.randint(2)
+                    orig_id = 2 * orig_job + orig_etype
+                    orig_idx = self._data.eventmap[orig_job, orig_etype]
+                    rlimit = orig_idx
+                    erl = orig_id
+                    while not (self._precedences[orig_id, erl]):
+                        rlimit += 1
+                        if rlimit == self.nevents:
+                            break
+                        jobr = self._data.eventlist[rlimit, 1]
+                        typer = self._data.eventlist[rlimit, 0]
+                        erl = jobr * 2 + typer
+                        if typer > 1:
+                            erl += self.nplannable - 2 + jobr * \
+                                (self.kextra - 2)
+                    new_idx = dists.plus_one(orig_idx, 0, rlimit)
+
+                # Compute the updated base score
+                t_0 = time.perf_counter()
+                if orig_etype == 1:
+                    base_diff, _ = \
+                        self._data.base_update_compute(orig_idx,
+                                                       new_idx - orig_idx)
+                else:
+                    base_diff = 0
+                t_1 = time.perf_counter()
+                t_base_update = t_1 - t_0
+                new_score = curr_score + base_diff
+
+                # Compute the updated LP score, apply: false
+                t_2 = time.perf_counter()
+                slack_lp_update = get_slack_value(
+                    self._data.lp_update_compute(orig_idx, new_idx)
+                )
+                t_3 = time.perf_counter()
+                t_lp_update = t_3 - t_2
+                # Extract and keep eventlist and eventmap
+                lp_eventlist = self._data.eventlist.copy()
+                lp_eventmap = self._data.eventmap.copy()
+
+                self._data.lp_update_apply(orig_idx, new_idx, success=False)
+                lp_rev_eventlist = self._data.eventlist.copy()
+                lp_rev_eventmap = self._data.eventmap.copy()
+
+                # Compute the updated simple score, apply: false
+                t_4 = time.perf_counter()
+                slack_simple_update = get_slack_value(curr_slack) + \
+                    get_slack_value(
+                        self._data.simple_update_compute(orig_idx, new_idx)
+                    )
+                t_5 = time.perf_counter()
+                t_simple_update = t_5 - t_4
+                # Extract and keep eventlist and eventmap
+                simple_eventlist = self._data.eventlist.copy()
+                simple_eventmap = self._data.eventmap.copy()
+
+                self._data.simple_update_apply(orig_idx, new_idx,
+                                               success=False)
+                simple_rev_eventlist = self._data.eventlist.copy()
+                simple_rev_eventmap = self._data.eventmap.copy()
+
+                # Compute the updated instance
+                self._data.instance_update(orig_idx, new_idx)
+                # Extract and keep eventlist and eventmap
+                inst_eventlist = self._data.eventlist.copy()
+                inst_eventmap = self._data.eventmap.copy()
+
+                # Compute initial base score
+                t_6 = time.perf_counter()
+                base_init = self._data.base_initiate()
+                t_7 = time.perf_counter()
+                t_base_init = t_7 - t_6
+
+                # Compute initial LP score
+                t_8 = time.perf_counter()
+                new_slack = self._data.lp_initiate()
+                lp_slack_init = get_slack_value(new_slack)
+                t_9 = time.perf_counter()
+                t_lp_init = t_9 - t_8
+
+                # Compute initial flow score
+                t_10 = time.perf_counter()
+                flow_slack_init = get_slack_value(self._data.flow_initiate())
+                t_11 = time.perf_counter()
+                t_flow_init = t_11 - t_10
+
+                # Compute initial simple score
+                t_12 = time.perf_counter()
+                simple_slack_init = get_slack_value(
+                    self._data.simple_initiate()
+                )
+                t_13 = time.perf_counter()
+                t_simple_init = t_13 - t_12
+
+                # Assert equalities of solution
+                assert np.array_equal(lp_eventlist, simple_eventlist), \
+                    "LP and simple update result in different eventlist"
+                assert np.array_equal(lp_eventlist, inst_eventlist), \
+                    "LP and instance update result in different eventlist"
+                assert np.array_equal(simple_eventlist, inst_eventlist), \
+                    "Simple and instance update result in different eventlist"
+
+                assert np.array_equal(lp_eventmap, simple_eventmap), \
+                    "LP and simple update result in different eventmap"
+                assert np.array_equal(lp_eventmap, inst_eventmap), \
+                    "LP and instance update result in different eventmap"
+                assert np.array_equal(simple_eventmap, inst_eventmap), \
+                    "Simple and instance update result in different eventmap"
+
+                assert np.array_equal(lp_rev_eventlist, orig_eventlist), \
+                    ("Reverting LP update does not result in original"
+                     " eventlist")
+                assert np.array_equal(simple_rev_eventlist, orig_eventlist), \
+                    ("Reverting simple update does not result in original"
+                     " eventlist")
+
+                assert np.array_equal(lp_rev_eventmap, orig_eventmap), \
+                    "Reverting LP update does not result in original eventmap"
+                assert np.array_equal(simple_rev_eventmap, orig_eventmap), \
+                    ("Reverting simple update does not result in original"
+                     " eventmap")
+
+                assert not np.array_equal(inst_eventlist, orig_eventlist), \
+                    "Eventlist is not updated at all."
+                assert not np.array_equal(inst_eventmap, orig_eventmap), \
+                    "Eventmap is not updated at all."
+
+                # Assert equalities of scores
+                assert np.isclose(new_score, base_init), \
+                    ("Recompute and update of base score give different"
+                     " results.")
+                assert np.isclose(slack_lp_update, lp_slack_init), \
+                    "Recompute and update of LP slack give different results."
+                assert np.isclose(slack_simple_update, simple_slack_init), \
+                    ("Recompute and update of simple slack give different"
+                     f" results: {i} {slack_simple_update}, {simple_slack_init}, {lp_slack_init}")
+
+                # Collect timing and scores in log file
+                f.write(
+                    f'{new_score:.2f};{slack_lp_update:.2f};'
+                    f'{flow_slack_init:.2f};{slack_simple_update:.2f};'
+                    f'{t_base_init:.6f}; {t_base_update:.6f};{t_lp_init:.6f};'
+                    f'{t_lp_update:.6f};{t_flow_init:.6f};'
+                    f'{t_simple_init:.6f};{t_simple_update:.6f}\n'
+                )
+
+                # Decide on keeping or reverting
+                if not np.isinf(lp_slack_init):
+                    curr_score = new_score
+                    curr_slack = new_slack
+                    orig_eventlist = inst_eventlist
+                    orig_eventmap = inst_eventmap
+                else:
+                    self._data.instance_update(new_idx, orig_idx)
+                    self._data.lp_initiate()
+                    self._data.simple_initiate()
+
+        return 0, False
 
 
 class SearchSpaceStateJumpPoint(SearchSpaceState):
@@ -636,7 +835,7 @@ class SearchSpaceStateJumpPoint(SearchSpaceState):
         instance : Dict of ndarray
             Dictionary containing the instance data.
     """
-    def __init__(self, eventlist):
+    def __init__(self, eventlist=None):
         self._eventlist = eventlist
         self._score = np.inf
         self._slack = []
@@ -693,4 +892,3 @@ class SearchSpaceStateJumpPoint(SearchSpaceState):
     @property
     def eventmap(self):
         raise NotImplementedError
-

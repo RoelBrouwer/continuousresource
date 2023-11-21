@@ -1,3 +1,4 @@
+import copy
 import math
 import numpy as np
 import warnings
@@ -164,6 +165,10 @@ class JumpPointSearchSpaceData():
             self._instance['eventlist'][event_idx:new_idx + 1] = \
                 np.roll(self._instance['eventlist'][event_idx:new_idx + 1],
                         -1, axis=0)
+
+        self._simple_valid = False
+        self._flow_valid = False
+        self._lp_valid = False
 
     def base_initiate(self):
         """Compute the score of a feasible solution respecting the
@@ -431,6 +436,7 @@ class JumpPointSearchSpaceData():
             self._fixed_predecessor_map[job * 2 + etype] = new_pred
             self._fixed_successor_map[job * 2 + etype] = new_succ
 
+            self._simple_valid = True
             self._flow_valid = False
             self._lp_valid = False
         else:
@@ -458,7 +464,7 @@ class JumpPointSearchSpaceData():
         if new_idx < event_idx:
             mod = -1
         new_pred = -1
-        # TODO: event_idx should be new_idx!
+
         if new_idx + mod >= 0:
             pred_job = self._instance['eventlist'][new_idx + mod, 1]
             pred_etype = self._instance['eventlist'][new_idx + mod, 0]
@@ -542,6 +548,8 @@ class JumpPointSearchSpaceData():
                 ) * self._instance['properties'][job, 1] -
                 self._instance['properties'][job, 0]
             )
+        else:
+            min_lb = 0
         if pre_start < 0:
             t_s = self._instance['jumppoints'][job, 0]
         else:
@@ -606,7 +614,9 @@ class JumpPointSearchSpaceData():
         current event order.
         """
         self._flow_valid = True
-        self._flow_model = EstimatingPenaltyFlow(self._instance, 'flow-test')
+        self._flow_model = EstimatingPenaltyFlow(
+            copy.deepcopy(self._instance), 'flow-test'
+        )
         sol = self._flow_model.solve()
         if sol is None:
             return np.inf

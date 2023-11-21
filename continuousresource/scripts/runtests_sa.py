@@ -20,7 +20,7 @@ from continuousresource.localsearch.localsearch \
 from continuousresource.localsearch.searchspace_jobarray \
     import JobArraySearchSpaceCombined
 from continuousresource.localsearch.searchspace_jumppoint \
-    import JumpPointSearchSpaceCombined
+    import JumpPointSearchSpaceCombined, JumpPointSearchSpaceTest
 
 
 @click.command(context_settings=dict(help_option_names=['-h', '--help']))
@@ -89,7 +89,7 @@ def main(input_format, path, output_dir, label, verbose):
         Log extensive information on the runs.
     """
     # Vary parameters here
-    sp_class = JumpPointSearchSpaceCombined
+    sp_class = JumpPointSearchSpaceTest
     instance_class = JumpPointInstance
     slackpenalties = [5, 5]
     sa_params = {
