@@ -51,7 +51,7 @@ def simulated_annealing(search_space, params=None):
         # Select a random neighbor
         fails, new_state = search_space.get_neighbor(temperature)
 
-        if new_state is None:
+        if new_state is None or not new_state:
             # If we were unable to accept a candidate solution from all
             # available options, we give up.
             iters = i + 1
@@ -129,7 +129,7 @@ def simulated_annealing_verbose(search_space, params=None, output_dir=None):
             # Select a random neighbor
             fails, new_state = search_space.get_neighbor(temperature)
 
-            if new_state is None:
+            if new_state is None or not new_state:
                 # If we were unable to accept a candidate solution from 200
                 # options, we stop.
                 iters = i + 1
@@ -191,7 +191,7 @@ def variable_neighborhood_descent(search_space):
 
     # Main loop
     while new_state is not None:
-        while new_state is not None:
+        while new_state is not None or not new_state:
             new_state = search_space.get_neighbor_swap_hc()
             iters += 1
         new_state = search_space.get_neighbor_move_hc()

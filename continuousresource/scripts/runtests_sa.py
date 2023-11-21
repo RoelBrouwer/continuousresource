@@ -20,7 +20,7 @@ from continuousresource.localsearch.localsearch \
 from continuousresource.localsearch.searchspace_jobarray \
     import JobArraySearchSpaceCombined
 from continuousresource.localsearch.searchspace_jumppoint \
-    import JumpPointSearchSpaceCombined
+    import JumpPointSearchSpaceCombined, JumpPointSearchSpaceTest
 
 
 @click.command(context_settings=dict(help_option_names=['-h', '--help']))
@@ -89,7 +89,7 @@ def main(input_format, path, output_dir, label, verbose):
         Log extensive information on the runs.
     """
     # Vary parameters here
-    sp_class = JumpPointSearchSpaceCombined
+    sp_class = JumpPointSearchSpaceTest
     instance_class = JumpPointInstance
     slackpenalties = [5, 5]
     sa_params = {
@@ -100,7 +100,7 @@ def main(input_format, path, output_dir, label, verbose):
     }
     sp_params = {
         'infer_precedence': True,
-        'fracs': {"swap": 0.75, "move": 0.15, "movepair": 0.1},
+        'fracs': {"swap": 1.0, "move": 0.0, "movepair": 0.0},
         'start_solution': "greedy"
     }
 
@@ -211,6 +211,9 @@ def run_on_instances(input_format, path, output_dir, label, verbose,
             sa_params['initial_temperature'] = \
                 sa_params['initial_temperature_func'](int(params.group(1)))
 
+            # Set log directory (may be used)
+            sp_params['logdir'] = os.path.join(output_dir, instance_name)
+
             t_start = time.perf_counter()
 
             # Initialize the search space
@@ -262,11 +265,12 @@ Total time (s): {t_end - t_start}
                                   f"{partial_label}_operator_data.json"), 'w')
             )
 
-            total_slack = 0
-            if isinstance(search_space.lp, LPWithSlack) \
-               and len(solution.slack) > 0:
-                for (slack_label, value, weight) in solution.slack:
-                    total_slack += value * weight
+            total_slack = solution.slack
+            # total_slack = 0
+            # if isinstance(search_space.lp, LPWithSlack) \
+            #    and len(solution.slack) > 0:
+            #     for (slack_label, value, weight) in solution.slack:
+            #         total_slack += value * weight
 
             # Build-up CSV-file
             csv.write(
