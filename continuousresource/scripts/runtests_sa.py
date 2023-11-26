@@ -20,7 +20,10 @@ from continuousresource.localsearch.localsearch \
 from continuousresource.localsearch.searchspace_jobarray \
     import JobArraySearchSpaceCombined
 from continuousresource.localsearch.searchspace_jumppoint \
-    import JumpPointSearchSpaceCombined, JumpPointSearchSpaceTest
+    import JumpPointSearchSpaceLP, JumpPointSearchSpaceTest, \
+    JumpPointSearchSpaceMix
+
+from continuousresource.localsearch import distributions as dists
 
 
 @click.command(context_settings=dict(help_option_names=['-h', '--help']))
@@ -71,7 +74,80 @@ from continuousresource.localsearch.searchspace_jumppoint \
     is_flag=True,
     help="Log extensive information on the runs."
 )
-def main(input_format, path, output_dir, label, verbose):
+####
+@click.option(
+    '--init-temp-mult',
+    'init_temp_mult',
+    required=False,
+    type=float,
+    default=1.0,
+    help="Initial temperature will be n * init_temp_mult."
+)
+@click.option(
+    '--alfa',
+    'alfa',
+    required=False,
+    type=float,
+    default=0.95,
+    help="Fraction of temperature after each update."
+)
+@click.option(
+    '--alfa-period-mult',
+    'alfa_period_mult',
+    required=False,
+    type=float,
+    default=4.0,
+    help=("Multiple of 2n, number of iterations between each temperature" \
+          " update.")
+)
+@click.option(
+    '--cutoff-mult',
+    'cutoff_mult',
+    required=False,
+    type=float,
+    default=100,
+    help="Multiple of alfa_period_mult, maximum number of iterations."
+)
+@click.option(
+    '--start-solution',
+    'start_solution',
+    required=False,
+    type=click.Choice(['greedy', 'random'], case_sensitive=False),
+    default='greedy',
+    help="Method used to generate an initial solution."
+)
+@click.option(
+    '--slack-value',
+    'slack_value',
+    required=False,
+    type=float,
+    default=5,
+    help="Penalty term multiplier."
+)
+@click.option(
+    '--tabu-length',
+    'tabu_length',
+    required=False,
+    type=int,
+    default=0,
+    help="Penalty term multiplier."
+)
+@click.option(
+    '--approach',
+    'approach',
+    required=False,
+    type=click.Choice([
+        'jobarray',
+        'jumppoint-lp',
+        'jumppoint-test',
+        'jumppoint-mix'
+    ], case_sensitive=False),
+    default='jumppoint-mix',
+    help="SA approach."
+)
+def main(input_format, path, output_dir, label, verbose, init_temp_mult, alfa,
+         alfa_period_mult, cutoff_mult, start_solution, slack_value,
+         tabu_length, approach):
     """Perform simulated annealing runs for all instances within the
     given directory.
 
@@ -87,21 +163,54 @@ def main(input_format, path, output_dir, label, verbose):
         Sufficiently unique label or name for the run.
     verbose : bool
         Log extensive information on the runs.
+    init_temp_mult : float
+        Initial temperature will be `n` * `init_temp_mult`.
+    alfa : float
+        Fraction of temperature after each update. 0 < `alfa` < 1.
+    alfa_period_mult : float
+        Multiple of 2n, number of iterations between each temperature
+        update.
+    cutoff_mult : float
+        Multiple of alfa_period_mult, maximum number of iterations.
+    start_solution : {'greedy', 'random'}
+        Method used to generate an initial solution.
+    slack_value : float
+        Penalty term multiplier.
+    tabu_length: int
+        Length of a tabulist.
+    approach : {'jobarray', 'jumppoint-lp', 'jumppoint-test',
+                'jumppoint-mix'}
+        SA approach.
     """
     # Vary parameters here
-    sp_class = JumpPointSearchSpaceTest
-    instance_class = JumpPointInstance
-    slackpenalties = [5, 5]
+    if approach == 'jobarray':
+        sp_class = JobArraySearchSpaceCombined
+        instance_class = JobPropertiesInstance
+        sp_params = {
+            'infer_precedence': True,
+            'fracs': {"swap": 1.0, "move": 0.0, "movepair": 0.0},
+            'start_solution': start_solution
+        }
+    else:
+        instance_class = JumpPointInstance
+        sp_params = {
+            'infer_precedence': True,
+            'dist': dists.linear,
+            'start_solution': start_solution,
+            'tabu_length': tabu_length
+        }
+        if approach == 'jumppoint-lp':
+            sp_class = JumpPointSearchSpaceLP
+        elif approach == 'jumppoint-test':
+            sp_class = JumpPointSearchSpaceTest
+        elif approach == 'jumppoint-mix':
+            sp_class = JumpPointSearchSpaceMix
+    slackpenalties = [slack_value, slack_value]
     sa_params = {
-        'initial_temperature_func': (lambda n: n),
-        'alfa': 0.95,
-        'alfa_period_func': (lambda n: (2 * n - 1) * 4),
-        'cutoff_func': (lambda n: (2 * n - 1) * 8 * 50)
-    }
-    sp_params = {
-        'infer_precedence': True,
-        'fracs': {"swap": 1.0, "move": 0.0, "movepair": 0.0},
-        'start_solution': "greedy"
+        'initial_temperature_func': (lambda n: init_temp_mult * n),
+        'alfa': alfa,
+        'alfa_period_func': (lambda n: (2 * n) * alfa_period_mult),
+        'cutoff_func': (lambda n: (2 * n) * alfa_period_mult * cutoff_mult)
     }
 
     if not os.path.isdir(output_dir):
@@ -265,7 +374,7 @@ Total time (s): {t_end - t_start}
                                   f"{partial_label}_operator_data.json"), 'w')
             )
 
-            total_slack = solution.slack
+            total_slack = solution.slack_value
             # total_slack = 0
             # if isinstance(search_space.lp, LPWithSlack) \
             #    and len(solution.slack) > 0:

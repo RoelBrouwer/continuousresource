@@ -32,7 +32,8 @@ class SearchSpace(ABC):
         }
 
         # Set parameters
-        self._params = sanitize_search_space_params(params)
+        self._params = params
+        # sanitize_search_space_params(params)
 
         # Find and set precedences
         self._precedences = self._find_precedences(instance,

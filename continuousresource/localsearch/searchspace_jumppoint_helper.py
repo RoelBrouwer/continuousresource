@@ -215,10 +215,6 @@ class JumpPointSearchSpaceData():
         """
         job_id = self._instance['eventlist'][event_idx, 1]
         if self._instance['eventlist'][event_idx, 0] != 1:
-            warnings.warn(
-                "Trying to update the base score for moving an event that is"
-                " not a completion event. No change."
-            )
             return 0.0, (job_id, self._jumppoint_map[job_id])
 
         if offset < 0:

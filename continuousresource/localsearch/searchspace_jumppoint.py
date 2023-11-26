@@ -43,6 +43,7 @@ class JumpPointSearchSpace(SearchSpace):
         self._logdir = params['logdir']
         self._data = JumpPointSearchSpaceData(instance)
         super().__init__(instance, params=params)
+        self._tabulist = np.full(params['tabu_length'], -1, dtype=int)
         self._label = "jumppoint-superclass"
 
     @property
@@ -96,6 +97,16 @@ class JumpPointSearchSpace(SearchSpace):
             fixed_events=instance['jumppoints'][:, 1:-1].flatten(),
             infer_precedence=self._params['infer_precedence']
         )
+
+    def _compute_score(self):
+        """Compute the (exact) score of the current solution
+
+        Returns
+        -------
+        float
+            Score of the current solution
+        """
+        raise NotImplementedError
 
     def _generate_initial_solution(self, instance):
         """Generates an initial solution within the search space and sets
@@ -151,11 +162,13 @@ class JumpPointSearchSpace(SearchSpace):
         self._data.simple_initiate()
 
         # Initialize states
-        self._current_solution = SearchSpaceStateJumpPoint(
-            self._data.eventlist
+        self._current_solution = SearchSpaceStateJumpPoint(None)
+        self._best_solution = SearchSpaceStateJumpPoint(
+            self._data.eventlist.copy()
         )
-        self._best_solution = self._current_solution.__copy__()
-        self._initial_solution = self._current_solution.__copy__()
+        self._initial_solution = SearchSpaceStateJumpPoint(
+            self._data.eventlist.copy()
+        )
 
         # Compute and register score
         initial_slack = self._data.lp_initiate()
@@ -163,7 +176,6 @@ class JumpPointSearchSpace(SearchSpace):
             get_slack_value(initial_slack)
         self._current_solution.score = initial_score
         self._current_solution.slack = initial_slack
-        self._current_solution.eventlist = None
         self._best_solution.score = initial_score
         self._best_solution.slack = initial_slack
         self._initial_solution.score = initial_score
@@ -183,60 +195,65 @@ class JumpPointSearchSpace(SearchSpace):
         times = times[times[:, 0].argsort()]
         return np.array(times[:, [1, 2]], dtype=int)
 
-    def _compute_score(self):
-        """Compute the (exact) score of the current solution
+    def _find_limits(self, orig_id, orig_idx):
+        """Find the index of the first event right and left of the event
+        with ID `orig_id` and/or index `orig_idx` has a precedence
+        relation.
+
+        Parameters
+        ----------
+        orig_id : int
+            ID of the job for which we find the limit
+        orig_idx : int
+            Index of the job for which we find the limit
 
         Returns
         -------
-        float
-            Score of the current solution
+        int
+            Index of the left limit
+        int
+            Index of the right limit
+
+        Notes
+        -----
+        It is assumed, but not checked, that `orig_id` and `orig_idx`
+        belong to the same event.
         """
-        assert self._lp_model is not None
+        rlimit = orig_idx
+        erl = orig_id
+        while not (self._precedences[orig_id, erl]):
+            rlimit += 1
+            if rlimit == self.nevents:
+                break
+            jobr = self._data.eventlist[rlimit, 1]
+            typer = self._data.eventlist[rlimit, 0]
+            erl = jobr * 2 + typer
+            if typer > 1:
+                erl += self.nplannable - 2 + jobr * (self.kextra - 2)
 
-        t_start = time.perf_counter()
-        sol = self._lp_model.solve()
-        t_end = time.perf_counter()
-        self.timings["lp_solve"] += t_end - t_start
+        llimit = orig_idx
+        ell = orig_id
+        while not (self._precedences[ell, orig_id]):
+            llimit -= 1
+            if llimit == -1:
+                break
+            jobl = self._data.eventlist[llimit, 1]
+            typel = self._data.eventlist[llimit, 0]
+            ell = jobl * 2 + typel
+            if typel > 1:
+                ell += self.nplannable - 2 + jobl * (self.kextra - 2)
 
-        if sol is not None:
-            score = sol.get_objective_value()
-            if isinstance(self._lp_model, LPWithSlack):
-                slack = self._lp_model.compute_slack(
-                        self._current_solution.instance['constants'][
-                            'slackpenalties'
-                        ]
-                )
-            else:
-                slack = []
-            return score, slack
-        else:
-            return np.inf, []
+        return llimit, rlimit
 
-    def _compute_current(self):
-        """Compute the scores associated with the current state of _data.
+    def _add_to_tabu_list(self, event_id):
+        """Add new ID to tabu list, and remove the last element.
 
-        Returns
-        -------
-        float
-            Score of the current solution
+        event_id : int
+            ID of the event to add to the list
         """
-        t_1 = time.perf_counter()
-        base_score = self._data.base_initiate()
-        t_2 = time.perf_counter()
-        simple_slack = self._data.simple_initiate()
-        t_3 = time.perf_counter()
-        flow_slack = self._data.flow_initiate()
-        t_4 = time.perf_counter()
-        lp_slack = self._data.lp_initiate()
-        t_5 = time.perf_counter()
-
-        with open(os.path.join(self._logdir,
-                               "compare_score.csv"), "a") as f:
-            f.write(
-                f'{lp_slack};{flow_slack};{simple_slack};{base_score};'
-                f'{t_5-t_4};{t_4 - t_3};{t_3 - t_2};{t_2 - t_1}\n'
-            )
-        return base_score, lp_slack
+        if len(self._tabulist) > 0:
+            self._tabulist = np.roll(self._tabulist, 1)
+            self._tabulist[0] = event_id
 
     def get_random_order(self):
         """Returns a random event order that respects (precomputed)
@@ -251,271 +268,6 @@ class JumpPointSearchSpace(SearchSpace):
         """
         return generate_random_solution(self._precedences,
                                         nplannable=self.nplannable)
-
-    def get_neighbor_move(self, orig_idx=None, dist=dists.uniform):
-        """Finds candidate solutions by moving an event a random number
-        of places in the event order, respecting precomputed precedence
-        constraints.
-
-        Parameters
-        ----------
-        orig_idx : int
-            Position of the event in the event list that will be moved.
-        dist : {dists.uniform, dists.linear, dists.plus_one}
-            Distribution used to define the probability for a relative
-            displacement to be selected.
-                - `uniform` selects any displacement with equal
-                  probability.
-                - `linear` selects a displacement with a probability that
-                  decreases linearly with increasing size.
-
-        Returns
-        -------
-        SearchSpaceState
-            New state for the search to continue with
-        tuple of int
-            Indices of the two swapped events
-        """
-        self._operator_data["move"]["performed"] += 1
-        self._operator_data["move"]["succeeded"] += 1
-        if orig_idx is None:
-            orig_idx = np.random.randint(
-                len(self._current_solution.eventlist)
-            )
-        new_idx = 0
-
-        job = self._current_solution.eventlist[orig_idx, 1]
-        etype = self._current_solution.eventlist[orig_idx, 0]
-
-        # Determine id of current event
-        orig_id = job * 2 + etype
-        if etype > 1:
-            orig_id += self.nplannable - 2 + job * (self.kextra - 2)
-
-        # Determine closest predecessor with a precedence relation
-        llimit = orig_idx
-        ell = orig_id
-        while not (self._precedences[ell, orig_id]):
-            llimit -= 1
-            if llimit == -1:
-                break
-            jobl = self._current_solution.eventlist[llimit, 1]
-            typel = self._current_solution.eventlist[llimit, 0]
-            ell = jobl * 2 + typel
-            if typel > 1:
-                ell += self.nplannable - 2 + jobl * (self.kextra - 2)
-
-        # Determine closest successor with a precedence relation
-        rlimit = orig_idx
-        erl = orig_id
-        while not (self._precedences[orig_id, erl]):
-            rlimit += 1
-            if rlimit == len(self._current_solution.eventlist):
-                break
-            jobr = self._current_solution.eventlist[rlimit, 1]
-            typer = self._current_solution.eventlist[rlimit, 0]
-            erl = jobr * 2 + typer
-            if typer > 1:
-                erl += self.nplannable - 2 + jobr * (self.kextra - 2)
-
-        # If the range of possibilities is limited to the current
-        # position, we select another job.
-        new_idx = dist(orig_idx, llimit, rlimit)
-
-        if new_idx < 0:
-            return None, (orig_idx, orig_idx)
-
-        new_state = self._current_solution.__copy__()
-
-        curr = orig_idx
-        inv = 0
-        # Invert movement direction
-        if orig_idx > new_idx:
-            inv = -1
-        while curr - new_idx != 0:
-            new_state.instance['eventmap'][
-                new_state.instance['eventlist'][curr + inv, 1],
-                new_state.instance['eventlist'][curr + inv, 0]
-            ] += 1
-            new_state.instance['eventmap'][
-                new_state.instance['eventlist'][curr + inv + 1, 1],
-                new_state.instance['eventlist'][curr + inv + 1, 0]
-            ] -= 1
-            new_state.instance['eventlist'][[curr + inv,
-                                             curr + inv + 1], :] = \
-                new_state.instance['eventlist'][[curr + inv + 1,
-                                                 curr + inv], :]
-
-            t_start = time.perf_counter()
-            self._lp_model.update_swap_neighbors(new_state.instance,
-                                                 curr + inv)
-            t_end = time.perf_counter()
-            self._timings["model_update"] += t_end - t_start
-
-            if inv < 0:
-                curr -= 1
-            else:
-                curr += 1
-
-        plan_part = self._compute_score_plannable_part(new_state.instance)
-        slack_part, slack = self._compute_score()
-        new_state.score = plan_part + slack_part
-        new_state.slack = slack
-
-        slack_estimate = self._estimate_score_slack_part(new_state.instance)
-        flow = EstimatingPenaltyFlow(new_state.instance, 'flow-test')
-        flow.solve()
-        sf = flow.compute_slack(new_state.instance['constants'][
-                            'slackpenalties'
-                        ])
-        slack_flow = sf[0][1] * sf[0][2] + sf[1][1] * sf[1][2] + \
-            sf[2][1] * sf[2][2]
-
-        with open(os.path.join(self._logdir, "compare_score.csv"), "a") as f:
-            f.write(
-                f'{plan_part + slack_part};{plan_part + slack_flow};'
-                f'{plan_part + slack_estimate};{plan_part}\n'
-            )
-
-        return new_state, (orig_idx, new_idx)
-
-    def _get_idx_linear_displacement(self, orig_idx, llimit, rlimit):
-        """Randomly selects a new index based on the provided limits,
-        where the probability of a displacement being selected decreases
-        linearly with increasing size.
-
-        Parameters
-        ----------
-        orig_idx : int
-            Current position of the event.
-        llimit : int
-            Exclusive lower boundary for its new position.
-        rlimit : int
-            Exclusive upper boundary for its new position.
-
-        Returns
-        -------
-        int
-            New position.
-
-        Notes
-        -----
-        TODO The current implementation leaves room for improvement.
-        """
-        displacements = [
-            i
-            for j in (range(orig_idx - llimit - 1, 0, -1),
-                      range(1, rlimit - orig_idx, 1))
-            for i in j
-        ]
-        max_dis = max(displacements[0], displacements[-1])
-        inv_displacements = [max_dis - i + 1 for i in displacements]
-        total = sum(inv_displacements)
-        probabilities = [i / total for i in inv_displacements]
-        selected = np.random.random()
-        cum_prob = probabilities[0]
-        curr_idx = 0
-        while cum_prob < selected:
-            curr_idx += 1
-            cum_prob += probabilities[curr_idx]
-        if curr_idx >= orig_idx - llimit - 1:
-            curr_idx += 1
-        return llimit + curr_idx + 1
-
-    def get_neighbor_move_revert(self, new_state, idcs):
-        """Reverts the model to its previous state.
-
-        Parameters
-        ----------
-        new_state : SearchSpaceState
-            Reference to the state containing a link to the model that
-            should be reverted.
-        idcs : Tuple
-            Tuple containing the original and new index of the moved
-            event.
-        """
-        self._operator_data["move"]["succeeded"] -= 1
-
-        curr = idcs[1]
-        inv = 0
-        # Invert movement direction
-        if idcs[1] > idcs[0]:
-            inv = -1
-        while curr - idcs[0] != 0:
-            new_state.instance['eventmap'][
-                new_state.instance['eventlist'][curr + inv, 1],
-                new_state.instance['eventlist'][curr + inv, 0]
-            ] += 1
-            new_state.instance['eventmap'][
-                new_state.instance['eventlist'][curr + inv + 1, 1],
-                new_state.instance['eventlist'][curr + inv + 1, 0]
-            ] -= 1
-            new_state.instance['eventlist'][[curr + inv,
-                                             curr + inv + 1], :] = \
-                new_state.instance['eventlist'][[curr + inv + 1,
-                                                 curr + inv], :]
-
-            t_start = time.perf_counter()
-            self._lp_model.update_swap_neighbors(new_state.instance,
-                                                 curr + inv)
-            t_end = time.perf_counter()
-            self._timings["model_update"] += t_end - t_start
-
-            if inv < 0:
-                curr -= 1
-            else:
-                curr += 1
-
-    def _get_neighbor_move_aggregate(self, temperature, dist='uniform'):
-        """Template method for finding candidate solutions.
-
-        Parameters
-        ----------
-        temperature : float
-            Current annealing temperature, used in determining if a
-            candidate with a lower objective should be accepted.
-        dist : {'uniform', 'linear'}
-            Distribution used to select the distance moved.
-
-        Returns
-        -------
-        int
-            Number of candidate solutions that were considered, but
-            rejected.
-        SearchSpaceState
-            New state for the search to continue with.
-        """
-        # Determine order
-        att_ord = np.random.permutation(
-            np.arange(len(self._current_solution.eventlist))
-        )
-        fail_count = 0
-
-        for idx in att_ord:
-            # Obtain a new state
-            new_state, revert_info = self.get_neighbor_move(orig_idx=idx,
-                                                            dist=dist)
-            if new_state is None:
-                fail_count += 1
-                continue
-            if new_state.score <= self._current_solution.score or \
-               np.random.random() <= math.exp((self._current_solution.score
-                                               - new_state.score)
-                                              / temperature):
-                if new_state.score < self._best_solution.score:
-                    self._best_solution = new_state.__copy__()
-                    self._best_solution.score = new_state.score
-                    self._best_solution.slack = new_state.slack
-                self._current_solution = new_state
-                break
-            else:
-                # Change the model back (the same model instance is used
-                # for both the current and candidate solutions).
-                self.get_neighbor_move_revert(new_state, revert_info)
-                fail_count += 1
-                new_state = None
-
-        return fail_count, new_state
 
     def random_walk(self, no_steps=100):
         """Performs a random walk from the current solution by swapping
@@ -535,37 +287,38 @@ class JumpPointSearchSpace(SearchSpace):
         SearchSpaceState
             New state for the search to continue with
         """
-        raise NotImplementedError
-        # TODO
-        new_state = self._current_solution.__copy__()
-
         for i in range(no_steps):
-            swap_id = np.random.randint(
-                len(new_state.model.event_list) - 1
+            new_idx = -1
+            while new_idx < 0:
+                orig_job = np.random.randint(self.njobs)
+                orig_etype = np.random.randint(2)
+                orig_id = 2 * orig_job + orig_etype
+                orig_idx = self._data.eventmap[orig_job, orig_etype]
+                llimit, rlimit = self._find_limits(orig_id, orig_idx)
+                new_idx = dists.plus_one(orig_idx, llimit, rlimit)
+            self._data.instance_update(orig_idx, new_idx)
+
+        base_score = self._data.base_initiate()
+        new_slack = self._data.lp_initiate()
+        self._data.simple_initiate()
+        new_score = base_score + get_slack_value(new_slack)
+
+        self._current_solution.score = new_score
+        self._current_solution.slack = new_slack
+
+        if new_score < self._best_solution.score:
+            self._best_solution = SearchSpaceStateJumpPoint(
+                self._data.eventlist.copy()
             )
-            while (new_state.model.event_list[swap_id, 1] ==
-                   new_state.model.event_list[swap_id + 1, 1]):
-                swap_id = np.random.randint(
-                    len(new_state.model.event_list) - 1
-                )
-            new_state.model.update_swap_neighbors(swap_id)
+            self._best_solution.score = new_score
+            self._best_solution.slack = new_slack
 
-        new_state.eventorder = copy.copy(
-            new_state.model.event_list
-        )
-        new_state.compute_score()
-
-        if new_state.score < self._best_solution.score:
-            self._best_solution = copy.copy(new_state)
-            self._best_solution.score = new_state.score
-            self._best_solution.slack = new_state.slack
-        self._current_solution = new_state
-
-        return new_state
+        return self._current_solution
 
 
-class JumpPointSearchSpaceCombined(JumpPointSearchSpace):
-    """Search space that only uses the job-event pair move operator.
+class JumpPointSearchSpaceLP(JumpPointSearchSpace):
+    """Search space implementing the search strategy using only the LP
+    for evaluating candidate solutions.
 
     Parameters
     ----------
@@ -579,10 +332,7 @@ class JumpPointSearchSpaceCombined(JumpPointSearchSpace):
     """
     def __init__(self, instance, params=None):
         super().__init__(instance, params=params)
-        self._fracs = params["fracs"]
-        self._label = (f"combined_so{self._fracs['swap']*100:.1f}_ms"
-                       f"{self._fracs['move']*100:.1f}_mp"
-                       f"{self._fracs['movepair']*100:.1f}")
+        self._label = f"jumppoint-lp-{params['dist'].__qualname__}"
 
     def get_neighbor(self, temperature):
         """Template method for finding candidate solutions.
@@ -601,8 +351,91 @@ class JumpPointSearchSpaceCombined(JumpPointSearchSpace):
         SearchSpaceState
             New state for the search to continue with.
         """
-        return self._get_neighbor_move_aggregate(temperature,
-                                                 dist=dists.linear)
+        # Determine order. Only plannable events need to be considered.
+        att_ord = np.random.permutation(
+            np.arange(self.nplannable)
+        )
+        fail_count = 0
+        accepted = False
+        current_base = self._current_solution.score - \
+            self._current_solution.slack_value
+
+        for event_id in att_ord:
+            if event_id in self._tabulist:
+                continue
+            job = math.floor(event_id / 2)
+            etype = event_id % 2
+            idx = self._data.eventmap[job, etype]
+            llimit, rlimit = self._find_limits(event_id, idx)
+
+            new_idx = self._params['dist'](idx, llimit, rlimit)
+
+            if new_idx < 0:
+                fail_count += 1
+                continue
+
+            # Precompute acceptance threshold
+            max_acc_score = -1 * math.log(np.random.random()) * \
+                temperature + self._current_solution.score
+
+            # Compute new base score & LP slack
+            cost_diff = 0
+            if etype == 1:
+                cost_diff, apply_base = \
+                    self._data.base_update_compute(idx, new_idx - idx)
+            new_base = current_base + cost_diff
+
+            # We do not have to compute the slack if the base is enough
+            # to reject.
+            if new_base > max_acc_score:
+                fail_count += 1
+                continue
+
+            new_slack = self._data.lp_update_compute(idx, new_idx)
+            new_score = new_base + get_slack_value(new_slack)
+
+            if np.isinf(get_slack_value(new_slack)) or \
+               new_score > max_acc_score:
+                self._data.lp_update_apply(idx, new_idx, success=False)
+                fail_count += 1
+                continue
+
+            # If we accept
+            if etype == 1:
+                self._data.base_update_apply(cost_diff, apply_base)
+            self._data.lp_update_apply(idx, new_idx, success=True)
+            self._current_solution.score = new_score
+            self._current_solution.slack = new_slack
+            self._add_to_tabu_list(event_id)
+
+            if new_score < self._best_solution.score:
+                self._best_solution.eventlist = self._data.eventlist.copy()
+                self._best_solution.score = new_score
+                self._best_solution.slack = new_slack
+            accepted = True
+            break
+
+        return fail_count, (self._current_solution if accepted else None)
+
+
+class JumpPointSearchSpaceMix(JumpPointSearchSpace):
+    """Search space implementing the search strategy using the LP and the
+    simple bound estimations.
+
+    Parameters
+    ----------
+    instance : Dict of ndarray
+        Dictionary containing the instance data.
+    params : Dict
+        Dictionary containing parameters defining the search space, with
+        the following keys:
+            - `infer_precedence` (bool): Flag indicating whether to infer
+              and continuously check (implicit) precedence relations.
+    """
+    def __init__(self, instance, params=None):
+        super().__init__(instance, params=params)
+        self._label = f"jumppoint-mix-{params['dist'].__qualname__}"
+        raise NotImplementedError
 
 
 class JumpPointSearchSpaceTest(JumpPointSearchSpace):
@@ -623,12 +456,11 @@ class JumpPointSearchSpaceTest(JumpPointSearchSpace):
     -----
     This class abuses the implementation of the search space, for the
     purpose of checking the speed and correctness of parts of the
-   implementation. DO NOT use this as a template for another search
-   space subclass.
+    implementation. DO NOT use this as a template for another search
+    space subclass.
     """
     def __init__(self, instance, params=None):
         super().__init__(instance, params=params)
-        self._fracs = params["fracs"]
         self._label = "test"
 
     def get_neighbor(self, temperature):
@@ -651,7 +483,7 @@ class JumpPointSearchSpaceTest(JumpPointSearchSpace):
         # We will only do one call to get_neighbor.
         orig_eventlist = self._data.eventlist.copy()
         orig_eventmap = self._data.eventmap.copy()
-        curr_score = self.initial.score - get_slack_value(self.initial.slack)
+        curr_score = self.initial.score - self.initial.slack_value
         curr_simple_slack = self._data.simple_initiate()
         with open(os.path.join(self._logdir,
                                "compare_score.csv"), "w") as f:
@@ -669,19 +501,8 @@ class JumpPointSearchSpaceTest(JumpPointSearchSpace):
                     orig_etype = np.random.randint(2)
                     orig_id = 2 * orig_job + orig_etype
                     orig_idx = self._data.eventmap[orig_job, orig_etype]
-                    rlimit = orig_idx
-                    erl = orig_id
-                    while not (self._precedences[orig_id, erl]):
-                        rlimit += 1
-                        if rlimit == self.nevents:
-                            break
-                        jobr = self._data.eventlist[rlimit, 1]
-                        typer = self._data.eventlist[rlimit, 0]
-                        erl = jobr * 2 + typer
-                        if typer > 1:
-                            erl += self.nplannable - 2 + jobr * \
-                                (self.kextra - 2)
-                    new_idx = dists.plus_one(orig_idx, 0, rlimit)
+                    llimit, rlimit = self._find_limits(orig_id, orig_idx)
+                    new_idx = dists.linear(orig_idx, llimit, rlimit)
 
                 # Compute the updated base score
                 t_0 = time.perf_counter()
@@ -879,6 +700,12 @@ class SearchSpaceStateJumpPoint(SearchSpaceState):
         """Manually set the value of the slack attribute for this state.
         Use with caution."""
         self._slack = slack
+        self._slack_value = get_slack_value(slack)
+
+    @property
+    def slack_value(self):
+        """float : slack value"""
+        return self._slack_value
 
     @property
     def eventlist(self):
