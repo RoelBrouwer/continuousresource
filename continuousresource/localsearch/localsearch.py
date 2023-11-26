@@ -44,7 +44,8 @@ def simulated_annealing(search_space, params=None):
     cutoff = sanitized_parameters['cutoff']
     temperature = sanitized_parameters['initial_temperature']
     iters = cutoff
-    # prev_score = search_space.current.score
+    prev_score = search_space.current.score
+    last_improve = 0
 
     # Main loop
     for i in range(cutoff):
@@ -56,6 +57,15 @@ def simulated_annealing(search_space, params=None):
             # available options, we give up.
             iters = i + 1
             break
+
+        if prev_score > search_space.current.score:
+            prev_score = search_space.current.score
+            last_improve = 0
+        else:
+            last_improve += 1
+            if last_improve >= 2 * alfa_period:
+                iters = i + 1
+                break
 
         # Update temperature for next iteration block
         if i > 0 and i % alfa_period == 0:
