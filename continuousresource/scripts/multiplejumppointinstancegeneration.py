@@ -103,7 +103,7 @@ def main(exportpath, exportformat, label):
         csv.write(
             'n;r;k;serialID;feasible\n'
         )
-        for n in [5, 10, 15, 20, 30, 50]:
+        for n in [5, 10, 15, 20, 30, 50, 100]:
             for r in [50.0]:
                 for k in [2, 3, 4]:
                     for i in range(4):

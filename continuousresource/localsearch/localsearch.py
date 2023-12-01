@@ -50,7 +50,7 @@ def simulated_annealing(search_space, params=None):
     # Main loop
     for i in range(cutoff):
         # Select a random neighbor
-        fails, new_state = search_space.get_neighbor(temperature)
+        improved, new_state = search_space.get_neighbor(temperature)
 
         if new_state is None or not new_state:
             # If we were unable to accept a candidate solution from all
@@ -58,8 +58,7 @@ def simulated_annealing(search_space, params=None):
             iters = i + 1
             break
 
-        if prev_score > search_space.current.score:
-            prev_score = search_space.current.score
+        if improved:
             last_improve = 0
         else:
             last_improve += 1
@@ -72,6 +71,7 @@ def simulated_annealing(search_space, params=None):
             temperature = temperature * alfa
 
     # Return solution
+    search_space.solve_and_write_best()
     return iters, search_space.best
 
 

@@ -343,7 +343,8 @@ def run_on_instances(input_format, path, output_dir, label, verbose,
             # Print solution (eventlist) to file
             np.savetxt(os.path.join(output_dir, instance_name,
                                     f"{partial_label}_solution.txt"),
-                       solution.eventlist)
+                       solution.eventlist,
+                       fmt='%.0f')
             with open(os.path.join(output_dir, instance_name,
                                    f"{partial_label}_solution.txt"),
                       "a") as txt:
@@ -352,27 +353,27 @@ def run_on_instances(input_format, path, output_dir, label, verbose,
                 )
 
             # Write timings to text file
-            with open(os.path.join(output_dir, instance_name,
-                                   f"{partial_label}_timings.txt"),
-                      "w") as txt:
-                txt.write(
-                    f"""
-Start solution (s): {search_space.timings["initial_solution"]}
-Total time (s): {t_end - t_start}
-                    """
-                )
+            # with open(os.path.join(output_dir, instance_name,
+                                   # f"{partial_label}_timings.txt"),
+                      # "w") as txt:
+                # txt.write(
+                    # f"""
+# Start solution (s): {search_space.timings["initial_solution"]}
+# Total time (s): {t_end - t_start}
+                    # """
+                # )
 
             # Write diagnostics to json files
-            json.dump(
-                search_space.timings,
-                open(os.path.join(output_dir, instance_name,
-                                  f"{partial_label}_timings.json"), 'w')
-            )
-            json.dump(
-                search_space.operator_data,
-                open(os.path.join(output_dir, instance_name,
-                                  f"{partial_label}_operator_data.json"), 'w')
-            )
+            # json.dump(
+                # search_space.timings,
+                # open(os.path.join(output_dir, instance_name,
+                                  # f"{partial_label}_timings.json"), 'w')
+            # )
+            # json.dump(
+                # search_space.operator_data,
+                # open(os.path.join(output_dir, instance_name,
+                                  # f"{partial_label}_operator_data.json"), 'w')
+            # )
 
             total_slack = solution.slack_value
             # total_slack = 0
