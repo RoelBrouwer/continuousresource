@@ -316,6 +316,22 @@ class JumpPointSearchSpace(SearchSpace):
         return self._current_solution
 
 
+    def solve_and_write_best(self):
+        """Solve the LP again to get the corresponding schedule"""
+        self._data.eventlist = self._best_solution.eventlist
+        self._data.eventmap = construct_event_mapping(
+            self._best_solution.eventlist, (self.njobs, self.kextra + 2)
+        )
+        slack = self._data.lp_initiate()
+        assert np.isclose(
+            get_slack_value(slack), self._best_solution.slack_value
+        ), "The re-solving of the best LP did not yield the same result."
+        # Print solution to file
+        with open(os.path.join(self._logdir, "solution.csv"), "w") as sol:
+            sol.write(self._data._lp_model.get_solution_csv())
+        
+
+
 class JumpPointSearchSpaceLP(JumpPointSearchSpace):
     """Search space implementing the search strategy using only the LP
     for evaluating candidate solutions.
@@ -345,9 +361,8 @@ class JumpPointSearchSpaceLP(JumpPointSearchSpace):
 
         Returns
         -------
-        int
-            Number of candidate solutions that were considered, but
-            rejected.
+        bool
+            Whether an improvement was found
         SearchSpaceState
             New state for the search to continue with.
         """
@@ -355,8 +370,8 @@ class JumpPointSearchSpaceLP(JumpPointSearchSpace):
         att_ord = np.random.permutation(
             np.arange(self.nplannable)
         )
-        fail_count = 0
         accepted = False
+        current_score = self._current_solution.score
         current_base = self._current_solution.score - \
             self._current_solution.slack_value
 
@@ -371,7 +386,6 @@ class JumpPointSearchSpaceLP(JumpPointSearchSpace):
             new_idx = self._params['dist'](idx, llimit, rlimit)
 
             if new_idx < 0:
-                fail_count += 1
                 continue
 
             # Precompute acceptance threshold
@@ -388,7 +402,6 @@ class JumpPointSearchSpaceLP(JumpPointSearchSpace):
             # We do not have to compute the slack if the base is enough
             # to reject.
             if new_base > max_acc_score:
-                fail_count += 1
                 continue
 
             new_slack = self._data.lp_update_compute(idx, new_idx)
@@ -397,7 +410,6 @@ class JumpPointSearchSpaceLP(JumpPointSearchSpace):
             if np.isinf(get_slack_value(new_slack)) or \
                new_score > max_acc_score:
                 self._data.lp_update_apply(idx, new_idx, success=False)
-                fail_count += 1
                 continue
 
             # If we accept
@@ -415,12 +427,15 @@ class JumpPointSearchSpaceLP(JumpPointSearchSpace):
             accepted = True
             break
 
-        return fail_count, (self._current_solution if accepted else None)
+        improved = accepted and new_score < current_score
+
+        return improved, (self._current_solution if accepted else None)
 
 
 class JumpPointSearchSpaceMix(JumpPointSearchSpace):
     """Search space implementing the search strategy using the LP and the
-    simple bound estimations.
+    simple bound estimations. The LP will be computed whenever the simple
+    estimation gives 0.0.
 
     Parameters
     ----------
@@ -435,6 +450,27 @@ class JumpPointSearchSpaceMix(JumpPointSearchSpace):
     def __init__(self, instance, params=None):
         super().__init__(instance, params=params)
         self._label = f"jumppoint-mix-{params['dist'].__qualname__}"
+        raise NotImplementedError
+
+
+class JumpPointSearchSpaceMixMinimal(JumpPointSearchSpaceMix):
+    """Search space implementing the search strategy using the LP and the
+    simple bound estimations. The LP will only be computed if a potential
+    new best solution is found.
+
+    Parameters
+    ----------
+    instance : Dict of ndarray
+        Dictionary containing the instance data.
+    params : Dict
+        Dictionary containing parameters defining the search space, with
+        the following keys:
+            - `infer_precedence` (bool): Flag indicating whether to infer
+              and continuously check (implicit) precedence relations.
+    """
+    def __init__(self, instance, params=None):
+        super().__init__(instance, params=params)
+        self._label = f"jumppoint-mix-minimal-{params['dist'].__qualname__}"
         raise NotImplementedError
 
 
@@ -474,9 +510,8 @@ class JumpPointSearchSpaceTest(JumpPointSearchSpace):
 
         Returns
         -------
-        int
-            Number of candidate solutions that were considered, but
-            rejected.
+        bool
+            Whether an improvement was found.
         SearchSpaceState
             New state for the search to continue with.
         """
@@ -645,7 +680,7 @@ class JumpPointSearchSpaceTest(JumpPointSearchSpace):
                     self._data.lp_initiate()
                     self._data.simple_initiate()
 
-        return 0, False
+        return False, None
 
 
 class SearchSpaceStateJumpPoint(SearchSpaceState):
@@ -661,6 +696,7 @@ class SearchSpaceStateJumpPoint(SearchSpaceState):
         self._eventlist = eventlist
         self._score = np.inf
         self._slack = []
+        self._slack_value = np.inf
 
     def __copy__(self):
         """Override copy method to make copies of some attributes and
@@ -720,3 +756,114 @@ class SearchSpaceStateJumpPoint(SearchSpaceState):
     @property
     def eventmap(self):
         raise NotImplementedError
+
+
+class SearchSpaceStateJumpPointMultiScore(SearchSpaceStateJumpPoint):
+    """Class object describing a state in the search space for a local
+    search approach. Keeping track of multiple scoring approaches.
+
+    Parameters
+    ----------
+    """
+    def __init__(self, eventlist=None):
+        super.__init__(eventlist)
+        self._simple_score = np.inf
+        self._simple_slack = []
+        self._simple_slack_value = np.inf
+        self._simple_in_use = False
+
+    @property
+    def score(self):
+        """float : Get the currently used score associated with the
+        represented solution.
+        """
+        print("yeah")
+        if self._simple_in_use:
+            return self._simple_score
+        else:
+            return self._score
+
+    @property
+    def simple_in_use(self):
+        """bool : Flag indicating which score to use.
+        """
+        return self._simple_in_use
+
+    @simple_in_use.setter
+    def simple_in_use(self, use):
+        """Manually set the value of the simple_in_use flag.
+        """
+        self._simple_in_use = use
+
+    @property
+    def simple_score(self):
+        """float : Score of the represented solution using lower bound
+        estimations on the penalty term.
+        """
+        return self._simple_score
+
+    @simple_score.setter
+    def simple_score(self, score):
+        """Manually set the value of the simple score attribute for this
+        state. Use with caution.
+        """
+        self._simple_score = score
+
+    @property
+    def simple_slack(self):
+        """list of tuple : List of tuples with in the first position a
+        string identifying the type of slack variable, in second position
+        the summed value of these variables (float) and in third position
+        the unit weight of these variables in the objective. As estimated
+        by the lower bound computations.
+        """
+        return self._simple_slack
+
+    @simple_slack.setter
+    def simple_slack(self, slack):
+        """Manually set the value of the simple slack attribute for this
+        state. Use with caution."""
+        self._simple_slack = slack
+        self._simple_slack_value = get_slack_value(slack)
+
+    @property
+    def simple_slack_value(self):
+        """float : slack value"""
+        return self._simple_slack_value
+
+    @property
+    def lp_score(self):
+        """float : Score of the represented solution (objective value of
+        the LP referenced in `model`).
+        """
+        return self._score
+
+    @lp_score.setter
+    def lp_score(self, score):
+        """Manually set the value of the score attribute for this state.
+        Use with caution.
+        """
+        self._score = score
+
+    @property
+    def lp_slack(self):
+        """list of tuple : List of tuples with in the first position a
+        string identifying the type of slack variable, in second position
+        the summed value of these variables (float) and in third position
+        the unit weight of these variables in the objective.
+        """
+        return self._slack
+
+    @lp_slack.setter
+    def lp_slack(self, slack):
+        """Manually set the value of the slack attribute for this state.
+        Use with caution."""
+        self._slack = slack
+        self._slack_value = get_slack_value(slack)
+
+    @property
+    def lp_slack_value(self):
+        """float : slack value"""
+        return self._slack_value
+
+
