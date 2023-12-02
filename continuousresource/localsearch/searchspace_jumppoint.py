@@ -323,12 +323,14 @@ class JumpPointSearchSpace(SearchSpace):
             self._best_solution.eventlist, (self.njobs, self.kextra + 2)
         )
         slack = self._data.lp_initiate()
-        assert np.isclose(
-            get_slack_value(slack), self._best_solution.slack_value
-        ), "The re-solving of the best LP did not yield the same result."
         # Print solution to file
         with open(os.path.join(self._logdir, "solution.csv"), "w") as sol:
             sol.write(self._data._lp_model.get_solution_csv())
+        assert np.isclose(
+            get_slack_value(slack), self._best_solution.slack_value
+        ), ("The re-solving of the best LP did not yield the same result:"
+            f" recomputed: {get_slack_value(slack)}, stored:",
+            f"{self._best_solution.slack_value}")
         
 
 
@@ -362,7 +364,7 @@ class JumpPointSearchSpaceLP(JumpPointSearchSpace):
         Returns
         -------
         bool
-            Whether an improvement was found
+            Whether an improvement was found.
         SearchSpaceState
             New state for the search to continue with.
         """
