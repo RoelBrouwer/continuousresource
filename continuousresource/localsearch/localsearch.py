@@ -62,7 +62,7 @@ def simulated_annealing(search_space, params=None):
             last_improve = 0
         else:
             last_improve += 1
-            if last_improve >= 2 * alfa_period:
+            if last_improve >= alfa_period:
                 iters = i + 1
                 break
 
