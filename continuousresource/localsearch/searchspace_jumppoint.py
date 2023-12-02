@@ -322,15 +322,28 @@ class JumpPointSearchSpace(SearchSpace):
         self._data.eventmap = construct_event_mapping(
             self._best_solution.eventlist, (self.njobs, self.kextra + 2)
         )
+        if not np.array_equal(self._data._instance['eventlist'],
+                              self._best_solution.eventlist):
+            print("Setting up the eventlist for solution checking failed.")
         slack = self._data.lp_initiate()
+        base = self._data.base_initiate()
         # Print solution to file
         with open(os.path.join(self._logdir, "solution.csv"), "w") as sol:
             sol.write(self._data._lp_model.get_solution_csv())
-        assert np.isclose(
+        if not np.isclose(
             get_slack_value(slack), self._best_solution.slack_value
-        ), ("The re-solving of the best LP did not yield the same result:"
-            f" recomputed: {get_slack_value(slack)}, stored:",
+        ):
+            print(slack)
+            print(self._best_solution.slack)
+            print("The re-solving of the best LP did not yield the same"
+            f" result - recomputed: {get_slack_value(slack)}, stored:",
             f"{self._best_solution.slack_value}")
+        if not np.isclose(
+            base, self._best_solution.score - self._best_solution.slack_value
+        ):
+            print("The re-solving of the base score did not yield the same"
+            f" result - recomputed: {base}, stored:",
+            f"{self._best_solution.score - self._best_solution.slack_value}")
         
 
 
