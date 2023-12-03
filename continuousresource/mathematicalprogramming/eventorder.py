@@ -1939,6 +1939,8 @@ class JumpPointContinuousLP(EventOrderLinearModel):
 class JumpPointContinuousLPWithSlack(LPWithSlack, JumpPointContinuousLP):
     def __init__(self, instance, label):
         super().__init__(instance, label)
+        # TEMPORARY FIX:
+        self._slackpenalties = instance['constants']['slackpenalties']
 
     def update_swap_neighbors(self, instance, first_idx):
         """Update the existing model by swapping two neighboring events
@@ -1991,26 +1993,7 @@ class JumpPointContinuousLPWithSlack(LPWithSlack, JumpPointContinuousLP):
 
         # update appropriate self._c_lower & self._c_upper
         if type1 == 1 and type2 < 2:
-            # Delayed completion, so bounds need to be enforced for an
-            # additional interval (now completes at the start of
-            # e2, i.e. has to be enforced during the preceding interval
-            if not isinstance(self._slvar[job1, e2], docplex.mp.dvar.Var):
-                self._slvar[job1, e2] = self._problem.continuous_var(
-                        name=f"s-_{job1},{e2}",
-                        lb=0
-                    )
-                self._suvar[job1, e2] = self._problem.continuous_var(
-                        name=f"s+_{job1},{e2}",
-                        lb=0
-                    )
-                self._cost += instance['constants']['slackpenalties'][1] * \
-                    (self._slvar[job1, e2] + self._suvar[job1, e2])
-            # 5. Lower bound
-            self._c_lower[job1, e2].lhs += self._slvar[job1, e2]
-            # 6. Upper bound
-            self._c_upper[job1, e2].lhs -= self._suvar[job1, e2]
-            # In addition, the time variables need to be updated in two
-            # more constraints.
+            # The time variables need to be updated in two constraints
             # No need to check for e0 > -1: this is always true
             assert e0 > -1
             self._c_lower[job1, e0].lhs += self._slvar[job1, e0]
@@ -2023,27 +2006,7 @@ class JumpPointContinuousLPWithSlack(LPWithSlack, JumpPointContinuousLP):
             self._c_upper[job1, e1].lhs -= self._suvar[job1, e1]
 
         if type2 == 0 and type1 < 2:
-            # Earlier start, so bounds need to be enforced for an
-            # additional interval
-            # No need to check boundary: this always holds
-            assert e3 > -1
-            if not isinstance(self._slvar[job2, e1], docplex.mp.dvar.Var):
-                self._slvar[job2, e1] = self._problem.continuous_var(
-                        name=f"s-_{job2},{e1}",
-                        lb=0
-                    )
-                self._suvar[job2, e1] = self._problem.continuous_var(
-                        name=f"s+_{job2},{e1}",
-                        lb=0
-                    )
-                self._cost += instance['constants']['slackpenalties'][1] * \
-                    (self._slvar[job2, e1] + self._suvar[job2, e1])
-            # 5. Lower bound
-            self._c_lower[job2, e1].lhs += self._slvar[job2, e1]
-            # 6. Upper bound
-            self._c_upper[job2, e1].lhs -= self._suvar[job2, e1]
-            # In addition, the time variables need to be updated in two
-            # more constraints.
+            # The time variables need to be updated in two constraints.
             self._c_lower[job2, e2].lhs += self._slvar[job2, e2]
             self._c_upper[job2, e2].lhs -= self._suvar[job2, e2]
         elif type2 == 1 and type1 < 2:
@@ -2157,6 +2120,12 @@ class JumpPointContinuousLPWithSlack(LPWithSlack, JumpPointContinuousLP):
             Lower bound of the job.
         """
         lb_c = super()._add_lower_bound_constraint(j, i, i2, lower_bound)
+        if not isinstance(self._slvar[j, i], docplex.mp.dvar.Var):
+            self._slvar[j, i] = self._problem.continuous_var(
+                name=f"s-_{j},{i}",
+                lb=0
+            )
+            self._cost += self._slackpenalties[1] * self._slvar[j, i]
         lb_c.lhs += self._slvar[j, i]
         return lb_c
 
@@ -2176,6 +2145,12 @@ class JumpPointContinuousLPWithSlack(LPWithSlack, JumpPointContinuousLP):
             Upper bound of the job.
         """
         ub_c = super()._add_upper_bound_constraint(j, i, i2, upper_bound)
+        if not isinstance(self._suvar[j, i], docplex.mp.dvar.Var):
+            self._suvar[j, i] = self._problem.continuous_var(
+                name=f"s+_{j},{i}",
+                lb=0
+            )
+            self._cost += self._slackpenalties[1] * self._suvar[j, i]
         ub_c.lhs -= self._suvar[j, i]
         return ub_c
 
