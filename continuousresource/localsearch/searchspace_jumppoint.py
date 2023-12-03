@@ -344,7 +344,10 @@ class JumpPointSearchSpace(SearchSpace):
             print("The re-solving of the base score did not yield the same"
             f" result - recomputed: {base}, stored:",
             f"{self._best_solution.score - self._best_solution.slack_value}")
-        
+
+    def write_log(self, filename, array, fmt='%.0f'):
+        """Write any array-like object to a log file"""
+        np.savetxt(os.path.join(self._logdir, f"{filename}.txt"), array, fmt=fmt)
 
 
 class JumpPointSearchSpaceLP(JumpPointSearchSpace):

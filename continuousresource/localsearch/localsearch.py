@@ -1,6 +1,8 @@
 import os
 import time
 
+import numpy as np
+
 from .utils import sanitize_simulated_annealing_params
 
 
@@ -45,7 +47,9 @@ def simulated_annealing(search_space, params=None):
     temperature = sanitized_parameters['initial_temperature']
     iters = cutoff
     prev_score = search_space.current.score
+    prev_best = search_space.current.score
     last_improve = 0
+    best_improve = [0]
 
     # Main loop
     for i in range(cutoff):
@@ -60,6 +64,8 @@ def simulated_annealing(search_space, params=None):
 
         if improved:
             last_improve = 0
+            if search_space.best.score < prev_best:
+                best_improve.append(i)
         else:
             last_improve += 1
             if last_improve >= alfa_period:
@@ -72,6 +78,7 @@ def simulated_annealing(search_space, params=None):
 
     # Return solution
     search_space.solve_and_write_best()
+    search_space.write_log("best_improve", best_improve)
     return iters, search_space.best
 
 
