@@ -344,7 +344,10 @@ class JumpPointSearchSpace(SearchSpace):
             print("The re-solving of the base score did not yield the same"
             f" result - recomputed: {base}, stored:",
             f"{self._best_solution.score - self._best_solution.slack_value}")
-        
+
+    def write_log(self, filename, array, fmt='%.0f'):
+        """Write any array-like object to a log file"""
+        np.savetxt(os.path.join(self._logdir, f"{filename}.txt"), array, fmt=fmt)
 
 
 class JumpPointSearchSpaceLP(JumpPointSearchSpace):
@@ -694,6 +697,139 @@ class JumpPointSearchSpaceTest(JumpPointSearchSpace):
                     self._data.instance_update(new_idx, orig_idx)
                     self._data.lp_initiate()
                     self._data.simple_initiate()
+
+        return False, None
+
+
+class JumpPointSearchSpaceTestLP(JumpPointSearchSpace):
+    """Search space used to check the correctness of the implementation
+    of the LP
+
+    Parameters
+    ----------
+    instance : Dict of ndarray
+        Dictionary containing the instance data.
+    params : Dict
+        Dictionary containing parameters defining the search space, with
+        the following keys:
+            - `infer_precedence` (bool): Flag indicating whether to infer
+              and continuously check (implicit) precedence relations.
+
+    Notes
+    -----
+    This class abuses the implementation of the search space, for the
+    purpose of checking the speed and correctness of parts of the
+    implementation. DO NOT use this as a template for another search
+    space subclass.
+    """
+    def __init__(self, instance, params=None):
+        super().__init__(instance, params=params)
+        # Create two more data instances
+        self._data2 = JumpPointSearchSpaceData(copy.deepcopy(instance))
+        self._data3 = JumpPointSearchSpaceData(copy.deepcopy(instance))
+        self._inst_store = copy.deepcopy(instance)
+        self._label = "test2"
+
+    def get_neighbor(self, temperature):
+        """Template method for finding candidate solutions.
+
+        Parameters
+        ----------
+        temperature : float
+            Current annealing temperature, used in determining if a
+            candidate with a lower objective should be accepted.
+
+        Returns
+        -------
+        bool
+            Whether an improvement was found.
+        SearchSpaceState
+            New state for the search to continue with.
+        """    
+        # For each iteration we will
+        prev_lp = 0
+        while True:
+            # Generate a new candidate solution.
+            new_idx = -1
+            while new_idx < 0:
+                orig_job = np.random.randint(self.njobs)
+                orig_etype = np.random.randint(2)
+                orig_id = 2 * orig_job + orig_etype
+                orig_idx = self._data.eventmap[orig_job, orig_etype]
+                llimit, rlimit = self._find_limits(orig_id, orig_idx)
+                new_idx = dists.linear(orig_idx, llimit, rlimit)
+
+            # Compute the updated LP score, apply: true
+            slack_lp_update = get_slack_value(
+                self._data.lp_update_compute(orig_idx, new_idx)
+            )
+            self._data.lp_update_apply(orig_idx, new_idx, success=True)
+            update_lp_eventlist = self._data.eventlist.copy()
+            update_lp_eventmap = self._data.eventmap.copy()
+
+            # Compute the updated instance
+            self._data2.instance_update(orig_idx, new_idx)
+            slack_inst = get_slack_value(self._data2.lp_initiate())
+            # Extract and keep eventlist and eventmap
+            inst_eventlist = self._data2.eventlist.copy()
+            inst_eventmap = self._data2.eventmap.copy()
+
+            # Compute initial LP score
+            self._data3.eventlist = update_lp_eventlist
+            self._data3.eventmap = construct_event_mapping(
+                update_lp_eventlist, (self.njobs, self.kextra + 2)
+            )
+            slack_lp = get_slack_value(self._data3.lp_initiate())
+
+            # Assert equalities of solution
+            assert np.array_equal(update_lp_eventlist, inst_eventlist), \
+                (f"Update of eventlist went wrong: {update_lp_eventlist} -"
+                 f" {inst_eventlist}")
+            assert np.array_equal(update_lp_eventmap, inst_eventmap), \
+                (f"Update of eventmap went wrong: {update_lp_eventmap} -"
+                 f" {inst_eventmap}")
+            assert np.array_equal(update_lp_eventmap, self._data3.eventmap), \
+                (f"Generating new eventmap went wrong: {update_lp_eventmap} -"
+                 f" {self._data3.eventmap}")
+
+            if not np.isclose(slack_lp_update, slack_inst) or \
+               not np.isclose(slack_inst, slack_lp):
+                print(f"Slack data1: {slack_lp_update}\n"
+                      f"Slack data2: {slack_inst}\n"
+                      f"Slack data3: {slack_lp}\n"
+                      f"Slack data2 previous: {prev_lp}")
+                self._data._lp_model._problem.export_as_lp(
+                    path=os.path.join(self._logdir, "lp_data1.lp")
+                )
+                self._data2._lp_model._problem.export_as_lp(
+                    path=os.path.join(self._logdir, "lp_data2.lp")
+                )
+                self._data3._lp_model._problem.export_as_lp(
+                    path=os.path.join(self._logdir, "lp_data3.lp")
+                )
+                with open(os.path.join(self._logdir, "solution1.csv"), "w") as sol:
+                    sol.write(self._data._lp_model.get_solution_csv())
+                with open(os.path.join(self._logdir, "solution2.csv"), "w") as sol:
+                    sol.write(self._data2._lp_model.get_solution_csv())
+                with open(os.path.join(self._logdir, "solution3.csv"), "w") as sol:
+                    sol.write(self._data3._lp_model.get_solution_csv())
+                np.savetxt(os.path.join(self._logdir, "eventlist1.txt"), update_lp_eventlist, fmt='%.0f')
+                np.savetxt(os.path.join(self._logdir, "eventlist2.txt"), inst_eventlist, fmt='%.0f')
+                raise RuntimeError()
+
+            # Decide on keeping or reverting
+            if np.isinf(slack_lp):
+                # Restart
+                self._data = JumpPointSearchSpaceData(
+                    copy.deepcopy(self._inst_store)
+                )
+                self._data2 = JumpPointSearchSpaceData(
+                    copy.deepcopy(self._inst_store)
+                )
+                self._data3 = JumpPointSearchSpaceData(
+                    copy.deepcopy(self._inst_store)
+                )
+            prev_lp = slack_inst
 
         return False, None
 

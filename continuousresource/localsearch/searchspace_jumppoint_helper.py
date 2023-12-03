@@ -1,4 +1,5 @@
 import copy
+import datetime
 import math
 import numpy as np
 import warnings
@@ -659,8 +660,10 @@ class JumpPointSearchSpaceData():
             for that type of slack.
         """
         self._lp_valid = True
-        self._lp_model = JumpPointContinuousLPWithSlack(self._instance,
-                                                        'lp-test')
+        self._lp_model = JumpPointContinuousLPWithSlack(
+            self._instance,
+            f'lp-{datetime.datetime.now().strftime("%Y%m%d_%H%M%S%f")}'
+        )
         sol = self._lp_model.solve()
         if sol is None:
             return [
