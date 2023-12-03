@@ -467,8 +467,32 @@ class JumpPointSearchSpaceMix(JumpPointSearchSpace):
     """
     def __init__(self, instance, params=None):
         super().__init__(instance, params=params)
+
+        # State administration
+        initial_score = self._initial_solution.score
+        initial_slack = self._initial_solution.slack
+        initial_list = self._initial_solution.eventlist
+        simple_slack = self._data.simple_initiate()
+        simple_score = self._initial_solution.score - \
+            get_slack_value(initial_slack) + get_slack_value(simple_slack)
+        self._current_solution = SearchSpaceStateJumpPointMultiScore()
+        self._best_solution = \
+            SearchSpaceStateJumpPointMultiScore(initial_list.copy())
+        self._initial_solution = \
+            SearchSpaceStateJumpPointMultiScore(initial_list)
+        self._current_solution.score = initial_score
+        self._current_solution.slack = initial_slack
+        self._current_solution.simple_slack = simple_slack
+        self._current_solution.simple_score = simple_score
+        self._best_solution.score = initial_score
+        self._best_solution.slack = initial_slack
+        self._best_solution.simple_slack = simple_slack
+        self._best_solution.simple_score = simple_score
+        self._initial_solution.score = initial_score
+        self._initial_solution.slack = initial_slack
+        self._initial_solution.simple_slack = simple_slack
+        self._initial_solution.simple_score = simple_score
         self._label = f"jumppoint-mix-{params['dist'].__qualname__}"
-        raise NotImplementedError
 
 
 class JumpPointSearchSpaceMixMinimal(JumpPointSearchSpaceMix):
@@ -489,7 +513,98 @@ class JumpPointSearchSpaceMixMinimal(JumpPointSearchSpaceMix):
     def __init__(self, instance, params=None):
         super().__init__(instance, params=params)
         self._label = f"jumppoint-mix-minimal-{params['dist'].__qualname__}"
-        raise NotImplementedError
+
+    def get_neighbor(self, temperature):
+        """Template method for finding candidate solutions.
+
+        Parameters
+        ----------
+        temperature : float
+            Current annealing temperature, used in determining if a
+            candidate with a lower objective should be accepted.
+
+        Returns
+        -------
+        bool
+            Whether an improvement was found.
+        SearchSpaceState
+            New state for the search to continue with.
+        """
+        # Determine order. Only plannable events need to be considered.
+        att_ord = np.random.permutation(
+            np.arange(self.nplannable)
+        )
+        accepted = False
+        current_lp_score = self._current_solution.lp_score
+        current_simple_score = self._current_solution.simple_score
+        current_base = self._current_solution.simple_score - \
+            self._current_solution.simple_slack_value
+
+        for event_id in att_ord:
+            if event_id in self._tabulist:
+                continue
+            job = math.floor(event_id / 2)
+            etype = event_id % 2
+            idx = self._data.eventmap[job, etype]
+            llimit, rlimit = self._find_limits(event_id, idx)
+
+            new_idx = self._params['dist'](idx, llimit, rlimit)
+
+            if new_idx < 0:
+                continue
+
+            # Precompute acceptance threshold
+            max_acc_diff = -1 * math.log(np.random.random()) * temperature
+
+            # Compute new base score & LP slack
+            cost_diff = 0
+            if etype == 1:
+                cost_diff, apply_base = \
+                    self._data.base_update_compute(idx, new_idx - idx)
+            new_base = current_base + cost_diff
+
+            # We do not have to compute the slack if the base is enough
+            # to reject.
+            if new_base > current_simple_score + max_acc_diff:
+                continue
+
+            new_simple_slack = self._data.simple_update_compute(idx, new_idx)
+            new_score = new_base + get_slack_value(new_simple_slack)
+
+            if np.isinf(get_slack_value(new_simple_slack)) or \
+               new_score > current_simple_score + max_acc_diff:
+                self._data.simple_update_apply(
+                    idx, new_idx, success=False
+                )
+                continue
+
+            # If we accept
+            if etype == 1:
+                self._data.base_update_apply(cost_diff, apply_base)
+            self._data.simple_update_apply(idx, new_idx, success=True)
+            self._current_solution.simple_score = new_score
+            self._current_solution.simple_slack = new_simple_slack
+            self._add_to_tabu_list(event_id)
+
+            if new_score < self._best_solution.simple_score:
+                # Compute LP
+                lp_slack = self._data.lp_initiate()
+                new_lp_score = new_base + get_slack_value(lp_slack)
+                self._current_solution.lp_slack = lp_slack
+                self._current_solution.lp_score = new_lp_score
+                if new_lp_score < self._best_solution.lp_score:
+                    self._best_solution.eventlist = \
+                        self._data.eventlist.copy()
+                    self._best_solution.simple_score = new_score
+                    self._best_solution.simple_slack = new_simple_slack
+                    self._best_solution.lp_score = new_lp_score
+                    self._best_solution.lp_slack = lp_slack
+            accepted = True
+            break
+
+        improved = accepted and new_score < current_simple_score
+
+        return improved, (self._current_solution if accepted else None)
 
 
 class JumpPointSearchSpaceTest(JumpPointSearchSpace):
@@ -917,34 +1032,10 @@ class SearchSpaceStateJumpPointMultiScore(SearchSpaceStateJumpPoint):
     ----------
     """
     def __init__(self, eventlist=None):
-        super.__init__(eventlist)
+        super().__init__(eventlist)
         self._simple_score = np.inf
         self._simple_slack = []
         self._simple_slack_value = np.inf
-        self._simple_in_use = False
-
-    @property
-    def score(self):
-        """float : Get the currently used score associated with the
-        represented solution.
-        """
-        print("yeah")
-        if self._simple_in_use:
-            return self._simple_score
-        else:
-            return self._score
-
-    @property
-    def simple_in_use(self):
-        """bool : Flag indicating which score to use.
-        """
-        return self._simple_in_use
-
-    @simple_in_use.setter
-    def simple_in_use(self, use):
-        """Manually set the value of the simple_in_use flag.
-        """
-        self._simple_in_use = use
 
     @property
     def simple_score(self):
