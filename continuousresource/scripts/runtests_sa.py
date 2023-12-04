@@ -21,7 +21,7 @@ from continuousresource.localsearch.searchspace_jobarray \
     import JobArraySearchSpaceCombined
 from continuousresource.localsearch.searchspace_jumppoint \
     import JumpPointSearchSpaceLP, JumpPointSearchSpaceTest, \
-    JumpPointSearchSpaceMix, JumpPointSearchSpaceMixMinimal
+    JumpPointSearchSpaceSimple, JumpPointSearchSpaceMixMinimal
 
 from continuousresource.localsearch import distributions as dists
 
@@ -140,10 +140,10 @@ from continuousresource.localsearch import distributions as dists
         'jobarray',
         'jumppoint-lp',
         'jumppoint-test',
-        'jumppoint-mix',
+        'jumppoint-simple',
         'jumppoint-mix-min'
     ], case_sensitive=False),
-    default='jumppoint-mix',
+    default='jumppoint-mix-min',
     help="SA approach."
 )
 def main(input_format, path, output_dir, label, verbose, init_temp_mult, alfa,
@@ -204,8 +204,8 @@ def main(input_format, path, output_dir, label, verbose, init_temp_mult, alfa,
             sp_class = JumpPointSearchSpaceLP
         elif approach == 'jumppoint-test':
             sp_class = JumpPointSearchSpaceTest
-        elif approach == 'jumppoint-mix':
-            sp_class = JumpPointSearchSpaceMix
+        elif approach == 'jumppoint-simple':
+            sp_class = JumpPointSearchSpaceSimple
         elif approach == 'jumppoint-mix-min':
             sp_class = JumpPointSearchSpaceMixMinimal
     slackpenalties = [slack_value, slack_value]
