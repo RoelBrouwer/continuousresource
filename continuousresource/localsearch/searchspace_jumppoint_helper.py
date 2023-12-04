@@ -441,6 +441,7 @@ class JumpPointSearchSpaceData():
             self._fixed_successor_map[job * 2 + etype] = new_succ
 
             self.instance_update(new_idx, event_idx)
+            self._simple_valid = True
 
             first = min(event_idx, new_idx)
             last = max(event_idx, new_idx)
