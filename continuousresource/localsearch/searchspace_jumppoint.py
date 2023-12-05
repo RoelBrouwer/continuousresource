@@ -450,10 +450,10 @@ class JumpPointSearchSpaceLP(JumpPointSearchSpace):
         return improved, (self._current_solution if accepted else None)
 
 
-class JumpPointSearchSpaceMixMinimal(JumpPointSearchSpace):
+class JumpPointSearchSpaceMix(JumpPointSearchSpace):
     """Search space implementing the search strategy using the LP and the
-    simple bound estimations. The LP will only be computed if a potential
-    new best solution is found.
+    simple bound estimations. The LP will only be computed if a candidate
+    is feasible, according to the simple bound estimation.
 
     Parameters
     ----------
@@ -492,6 +492,135 @@ class JumpPointSearchSpaceMixMinimal(JumpPointSearchSpace):
         self._initial_solution.slack = initial_slack
         self._initial_solution.simple_slack = simple_slack
         self._initial_solution.simple_score = simple_score
+        self._label = f"jumppoint-mix-{params['dist'].__qualname__}"
+
+    def get_neighbor(self, temperature):
+        """Template method for finding candidate solutions.
+
+        Parameters
+        ----------
+        temperature : float
+            Current annealing temperature, used in determining if a
+            candidate with a lower objective should be accepted.
+
+        Returns
+        -------
+        bool
+            Whether an improvement was found.
+        SearchSpaceState
+            New state for the search to continue with.
+        """
+        # Determine order. Only plannable events need to be considered.
+        att_ord = np.random.permutation(
+            np.arange(self.nplannable)
+        )
+        accepted = False
+        current_lp_score = self._current_solution.lp_score
+        current_simple_score = self._current_solution.simple_score
+        current_base = self._current_solution.simple_score - \
+            self._current_solution.simple_slack_value
+
+        for event_id in att_ord:
+            if event_id in self._tabulist:
+                continue
+            job = math.floor(event_id / 2)
+            etype = event_id % 2
+            idx = self._data.eventmap[job, etype]
+            llimit, rlimit = self._find_limits(event_id, idx)
+
+            new_idx = self._params['dist'](idx, llimit, rlimit)
+
+            if new_idx < 0:
+                continue
+
+            # Precompute acceptance threshold
+            max_acc_diff = -1 * math.log(np.random.random()) * temperature
+
+            # Compute new base score & LP slack
+            cost_diff = 0
+            if etype == 1:
+                cost_diff, apply_base = \
+                    self._data.base_update_compute(idx, new_idx - idx)
+            new_base = current_base + cost_diff
+
+            # We do not have to compute the slack if the base is enough
+            # to reject.
+            if new_base > current_simple_score + max_acc_diff:
+                continue
+
+            new_simple_slack = self._data.simple_update_compute(idx, new_idx)
+            new_score = new_base + get_slack_value(new_simple_slack)
+
+            if np.isinf(get_slack_value(new_simple_slack)) or \
+               new_score > current_simple_score + max_acc_diff:
+                self._data.simple_update_apply(
+                    idx, new_idx, success=False
+                )
+                continue
+
+            # Compute LP both for the found-feasible and found-best case
+            # Instance is up-to-date at this point
+            new_lp_score = - 1
+            if np.isclose(get_slack_value(new_simple_slack), 0.0) or \
+               new_score < self._best_solution.simple_score:
+                lp_slack = self._data.lp_initiate()
+                new_lp_score = new_base + get_slack_value(lp_slack)
+
+            # Reconsider accepting based on LP score
+            if np.isclose(get_slack_value(new_simple_slack), 0.0) and \
+               (np.isinf(get_slack_value(lp_slack)) or
+                new_lp_score > max(current_lp_score,
+                current_simple_score) + max_acc_diff
+               ):
+                self._data.simple_update_apply(
+                    idx, new_idx, success=False
+                )
+                continue
+
+            # If we accept
+            if etype == 1:
+                self._data.base_update_apply(cost_diff, apply_base)
+            self._data.simple_update_apply(idx, new_idx, success=True)
+            self._current_solution.simple_score = new_score
+            self._current_solution.simple_slack = new_simple_slack
+            self._current_solution.lp_score = new_lp_score
+            if new_lp_score > 0:
+                self._current_solution.lp_slack = lp_slack
+            self._add_to_tabu_list(event_id)
+
+            if new_lp_score > 0 and \
+               new_lp_score < self._best_solution.lp_score:
+                self._best_solution.eventlist = \
+                    self._data.eventlist.copy()
+                self._best_solution.simple_score = new_score
+                self._best_solution.simple_slack = new_simple_slack
+                self._best_solution.lp_score = new_lp_score
+                self._best_solution.lp_slack = lp_slack
+            accepted = True
+            break
+
+        improved = accepted and new_score < current_simple_score
+
+        return improved, (self._current_solution if accepted else None)
+
+
+class JumpPointSearchSpaceMixMinimal(JumpPointSearchSpaceMix):
+    """Search space implementing the search strategy using the LP and the
+    simple bound estimations. The LP will only be computed if a potential
+    new best solution is found.
+
+    Parameters
+    ----------
+    instance : Dict of ndarray
+        Dictionary containing the instance data.
+    params : Dict
+        Dictionary containing parameters defining the search space, with
+        the following keys:
+            - `infer_precedence` (bool): Flag indicating whether to infer
+              and continuously check (implicit) precedence relations.
+    """
+    def __init__(self, instance, params=None):
+        super().__init__(instance, params=params)
         self._label = f"jumppoint-mix-minimal-{params['dist'].__qualname__}"
 
     def get_neighbor(self, temperature):
