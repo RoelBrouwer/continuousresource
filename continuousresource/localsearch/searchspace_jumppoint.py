@@ -719,9 +719,10 @@ class JumpPointSearchSpaceMixMinimal(JumpPointSearchSpaceMix):
 
 
 class JumpPointSearchSpaceSimple(JumpPointSearchSpaceMixMinimal):
-    """Search space implementing the search strategy using the LP and the
-    simple bound estimations. The LP will be computed whenever the simple
-    estimation gives 0.0.
+    """Search space implementing the search strategy using the simple
+    bound estimations. The LP will only be computed for the best found
+    simple solution, which will be improved with an LP-based hill
+    climber.
 
     Parameters
     ----------
@@ -914,6 +915,232 @@ class JumpPointSearchSpaceSimple(JumpPointSearchSpaceMixMinimal):
             break
 
         return accepted
+
+
+class JumpPointSearchSpaceSwitch(JumpPointSearchSpaceMix):
+    """Search space implementing the search strategy using the LP and the
+    simple bound estimations. Will use the simple estimation, until it
+    reports a penalty term of 0.0. Then, it switches over to an LP-based
+    search.
+
+    Parameters
+    ----------
+    instance : Dict of ndarray
+        Dictionary containing the instance data.
+    params : Dict
+        Dictionary containing parameters defining the search space, with
+        the following keys:
+            - `infer_precedence` (bool): Flag indicating whether to infer
+              and continuously check (implicit) precedence relations.
+    """
+    def __init__(self, instance, params=None):
+        super().__init__(instance, params=params)
+        self._label = f"jumppoint-switch-{params['dist'].__qualname__}"
+        self._use_simple = True
+
+    def get_neighbor(self, temperature):
+        """Template method for finding candidate solutions.
+
+        Parameters
+        ----------
+        temperature : float
+            Current annealing temperature, used in determining if a
+            candidate with a lower objective should be accepted.
+
+        Returns
+        -------
+        bool
+            Whether an improvement was found.
+        SearchSpaceState
+            New state for the search to continue with.
+        """
+        if self._use_simple:
+            return self._get_neighbor_simple(temperature)
+        else:
+            return self._get_neighbor_lp(temperature)
+
+    def _get_neighbor_simple(self, temperature):
+        """Template method for finding candidate solutions.
+
+        Parameters
+        ----------
+        temperature : float
+            Current annealing temperature, used in determining if a
+            candidate with a lower objective should be accepted.
+
+        Returns
+        -------
+        bool
+            Whether an improvement was found.
+        SearchSpaceState
+            New state for the search to continue with.
+        """
+        # Determine order. Only plannable events need to be considered.
+        att_ord = np.random.permutation(
+            np.arange(self.nplannable)
+        )
+        accepted = False
+        current_simple_score = self._current_solution.simple_score
+        current_base = self._current_solution.simple_score - \
+            self._current_solution.simple_slack_value
+
+        for event_id in att_ord:
+            if event_id in self._tabulist:
+                continue
+            job = math.floor(event_id / 2)
+            etype = event_id % 2
+            idx = self._data.eventmap[job, etype]
+            llimit, rlimit = self._find_limits(event_id, idx)
+
+            new_idx = self._params['dist'](idx, llimit, rlimit)
+
+            if new_idx < 0:
+                continue
+
+            # Precompute acceptance threshold
+            max_acc_diff = -1 * math.log(np.random.random()) * temperature
+
+            # Compute new base score & LP slack
+            cost_diff = 0
+            if etype == 1:
+                cost_diff, apply_base = \
+                    self._data.base_update_compute(idx, new_idx - idx)
+            new_base = current_base + cost_diff
+
+            # We do not have to compute the slack if the base is enough
+            # to reject.
+            if new_base > current_simple_score + max_acc_diff:
+                continue
+
+            new_simple_slack = self._data.simple_update_compute(idx, new_idx)
+            new_score = new_base + get_slack_value(new_simple_slack)
+
+            if np.isinf(get_slack_value(new_simple_slack)) or \
+               new_score > current_simple_score + max_acc_diff:
+                self._data.simple_update_apply(
+                    idx, new_idx, success=False
+                )
+                continue
+            # If we accept
+            if etype == 1:
+                self._data.base_update_apply(cost_diff, apply_base)
+            self._data.simple_update_apply(idx, new_idx, success=True)
+            self._current_solution.simple_score = new_score
+            self._current_solution.simple_slack = new_simple_slack
+            self._add_to_tabu_list(event_id)
+
+            if new_score < self._best_solution.simple_score:
+                self._best_solution.eventlist = \
+                    self._data.eventlist.copy()
+                self._best_solution.simple_score = new_score
+                self._best_solution.simple_slack = new_simple_slack
+            accepted = True
+
+            # Compute LP both for the found-feasible case
+            if np.isclose(get_slack_value(new_simple_slack), 0.0):
+                # Compute lp score for best solution
+                curr_list = self._data.eventlist
+                curr_map = self._data.eventmap
+                self._data.eventlist = self._best_solution.eventlist
+                self._data.eventmap = construct_event_mapping(
+                    self._best_solution.eventlist,
+                    (self.njobs, self.kextra + 2)
+                )
+                self._best_solution.lp_slack  = self._data.lp_initiate()
+                self._best_solution.lp_score = self._data.base_initiate() + \
+                    self._best_solution.lp_slack_value
+                self._data.eventlist = curr_list
+                self._data.eventmap = curr_map
+                self._current_solution.lp_slack = self._data.lp_initiate()
+                self._current_solution.lp_score = new_base + \
+                    self._current_solution.lp_slack_value
+                self._use_simple = False
+            break
+
+        improved = accepted and (new_score < current_simple_score)
+
+        return improved, (self._current_solution if accepted else None)
+
+    def _get_neighbor_lp(self, temperature):
+        """Template method for finding candidate solutions.
+
+        Parameters
+        ----------
+        temperature : float
+            Current annealing temperature, used in determining if a
+            candidate with a lower objective should be accepted.
+
+        Returns
+        -------
+        bool
+            Whether an improvement was found.
+        SearchSpaceState
+            New state for the search to continue with.
+        """
+        # Determine order. Only plannable events need to be considered.
+        att_ord = np.random.permutation(
+            np.arange(self.nplannable)
+        )
+        accepted = False
+        current_score = self._current_solution.score
+        current_base = self._current_solution.score - \
+            self._current_solution.slack_value
+
+        for event_id in att_ord:
+            if event_id in self._tabulist:
+                continue
+            job = math.floor(event_id / 2)
+            etype = event_id % 2
+            idx = self._data.eventmap[job, etype]
+            llimit, rlimit = self._find_limits(event_id, idx)
+
+            new_idx = self._params['dist'](idx, llimit, rlimit)
+
+            if new_idx < 0:
+                continue
+
+            # Precompute acceptance threshold
+            max_acc_score = -1 * math.log(np.random.random()) * \
+                temperature + self._current_solution.score
+
+            # Compute new base score & LP slack
+            cost_diff = 0
+            if etype == 1:
+                cost_diff, apply_base = \
+                    self._data.base_update_compute(idx, new_idx - idx)
+            new_base = current_base + cost_diff
+
+            # We do not have to compute the slack if the base is enough
+            # to reject.
+            if new_base > max_acc_score:
+                continue
+
+            new_slack = self._data.lp_update_compute(idx, new_idx)
+            new_score = new_base + get_slack_value(new_slack)
+
+            if np.isinf(get_slack_value(new_slack)) or \
+               new_score > max_acc_score:
+                self._data.lp_update_apply(idx, new_idx, success=False)
+                continue
+
+            # If we accept
+            if etype == 1:
+                self._data.base_update_apply(cost_diff, apply_base)
+            self._data.lp_update_apply(idx, new_idx, success=True)
+            self._current_solution.score = new_score
+            self._current_solution.slack = new_slack
+            self._add_to_tabu_list(event_id)
+
+            if new_score < self._best_solution.score:
+                self._best_solution.eventlist = self._data.eventlist.copy()
+                self._best_solution.score = new_score
+                self._best_solution.slack = new_slack
+            accepted = True
+            break
+
+        improved = accepted and new_score < current_score
+
+        return improved, (self._current_solution if accepted else None)
 
 
 class JumpPointSearchSpaceTest(JumpPointSearchSpace):
@@ -1416,5 +1643,3 @@ class SearchSpaceStateJumpPointMultiScore(SearchSpaceStateJumpPoint):
     def lp_slack_value(self):
         """float : slack value"""
         return self._slack_value
-
-
