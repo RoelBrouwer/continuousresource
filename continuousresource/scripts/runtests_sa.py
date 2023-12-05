@@ -22,7 +22,7 @@ from continuousresource.localsearch.searchspace_jobarray \
 from continuousresource.localsearch.searchspace_jumppoint \
     import JumpPointSearchSpaceLP, JumpPointSearchSpaceTest, \
     JumpPointSearchSpaceMix, JumpPointSearchSpaceMixMinimal, \
-    JumpPointSearchSpaceSimple
+    JumpPointSearchSpaceSimple, JumpPointSearchSpaceSwitch
 
 from continuousresource.localsearch import distributions as dists
 
@@ -143,7 +143,8 @@ from continuousresource.localsearch import distributions as dists
         'jumppoint-test',
         'jumppoint-mix',
         'jumppoint-mix-min',
-        'jumppoint-simple'
+        'jumppoint-simple',
+        'jumppoint-switch'
     ], case_sensitive=False),
     default='jumppoint-mix-min',
     help="SA approach."
@@ -182,7 +183,8 @@ def main(input_format, path, output_dir, label, verbose, init_temp_mult, alfa,
     tabu_length: int
         Length of a tabulist.
     approach : {'jobarray', 'jumppoint-lp', 'jumppoint-test',
-                'jumppoint-mix', 'jumppoint-mix-min', 'jumppoint-simple'}
+                'jumppoint-mix', 'jumppoint-mix-min', 'jumppoint-simple',
+                'jumppoint-switch'}
         SA approach.
     """
     # Vary parameters here
@@ -212,6 +214,8 @@ def main(input_format, path, output_dir, label, verbose, init_temp_mult, alfa,
             sp_class = JumpPointSearchSpaceMixMinimal
         elif approach == 'jumppoint-simple':
             sp_class = JumpPointSearchSpaceSimple
+        elif approach == 'jumppoint-switch':
+            sp_class = JumpPointSearchSpaceSwitch
     slackpenalties = [slack_value, slack_value]
     sa_params = {
         'initial_temperature_func': (lambda n: init_temp_mult * n),
