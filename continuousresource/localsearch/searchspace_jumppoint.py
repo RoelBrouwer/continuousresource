@@ -338,12 +338,14 @@ class JumpPointSearchSpace(SearchSpace):
             print("The re-solving of the best LP did not yield the same"
             f" result - recomputed: {get_slack_value(slack)}, stored:",
             f"{self._best_solution.slack_value}")
+            self._best_solution.slack = slack
         if not np.isclose(
             base, self._best_solution.score - self._best_solution.slack_value
         ):
             print("The re-solving of the base score did not yield the same"
             f" result - recomputed: {base}, stored:",
             f"{self._best_solution.score - self._best_solution.slack_value}")
+            self._best_solution.score = base + self._best_solution.slack_value
 
     def write_log(self, filename, array, fmt='%.0f'):
         """Write any array-like object to a log file"""
@@ -1046,7 +1048,7 @@ class JumpPointSearchSpaceSwitch(JumpPointSearchSpaceMix):
                     self._best_solution.eventlist,
                     (self.njobs, self.kextra + 2)
                 )
-                self._best_solution.lp_slack  = self._data.lp_initiate()
+                self._best_solution.lp_slack = self._data.lp_initiate()
                 self._best_solution.lp_score = self._data.base_initiate() + \
                     self._best_solution.lp_slack_value
                 self._data.eventlist = curr_list
