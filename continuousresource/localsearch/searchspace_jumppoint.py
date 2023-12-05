@@ -599,7 +599,9 @@ class JumpPointSearchSpaceMix(JumpPointSearchSpace):
             accepted = True
             break
 
-        improved = accepted and new_score < current_simple_score
+        improved = accepted and (new_score < current_simple_score or
+                                 (new_lp_score > 0 and
+                                  new_lp_score < current_lp_score))
 
         return improved, (self._current_solution if accepted else None)
 
