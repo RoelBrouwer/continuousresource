@@ -21,8 +21,7 @@ from continuousresource.localsearch.searchspace_jobarray \
     import JobArraySearchSpaceCombined
 from continuousresource.localsearch.searchspace_jumppoint \
     import JumpPointSearchSpaceLP, JumpPointSearchSpaceTest, \
-    JumpPointSearchSpaceMix, JumpPointSearchSpaceMixMinimal, \
-    JumpPointSearchSpaceSimple, JumpPointSearchSpaceSwitch
+    JumpPointSearchSpaceMix
 
 from continuousresource.localsearch import distributions as dists
 
@@ -141,12 +140,9 @@ from continuousresource.localsearch import distributions as dists
         'jobarray',
         'jumppoint-lp',
         'jumppoint-test',
-        'jumppoint-mix',
-        'jumppoint-mix-min',
-        'jumppoint-simple',
-        'jumppoint-switch'
+        'jumppoint-mix'
     ], case_sensitive=False),
-    default='jumppoint-mix-min',
+    default='jumppoint-mix',
     help="SA approach."
 )
 def main(input_format, path, output_dir, label, verbose, init_temp_mult, alfa,
@@ -183,53 +179,52 @@ def main(input_format, path, output_dir, label, verbose, init_temp_mult, alfa,
     tabu_length: int
         Length of a tabulist.
     approach : {'jobarray', 'jumppoint-lp', 'jumppoint-test',
-                'jumppoint-mix', 'jumppoint-mix-min', 'jumppoint-simple',
-                'jumppoint-switch'}
+                'jumppoint-mix'}
         SA approach.
     """
-    # Vary parameters here
-    if approach == 'jobarray':
-        sp_class = JobArraySearchSpaceCombined
-        instance_class = JobPropertiesInstance
-        sp_params = {
-            'infer_precedence': True,
-            'fracs': {"swap": 1.0, "move": 0.0, "movepair": 0.0},
-            'start_solution': start_solution
-        }
-    else:
-        instance_class = JumpPointInstance
-        sp_params = {
-            'infer_precedence': True,
-            'dist': dists.linear,
-            'start_solution': start_solution,
-            'tabu_length': tabu_length
-        }
-        if approach == 'jumppoint-lp':
-            sp_class = JumpPointSearchSpaceLP
-        elif approach == 'jumppoint-test':
-            sp_class = JumpPointSearchSpaceTest
-        elif approach == 'jumppoint-mix':
-            sp_class = JumpPointSearchSpaceMix
-        elif approach == 'jumppoint-mix-min':
-            sp_class = JumpPointSearchSpaceMixMinimal
-        elif approach == 'jumppoint-simple':
-            sp_class = JumpPointSearchSpaceSimple
-        elif approach == 'jumppoint-switch':
-            sp_class = JumpPointSearchSpaceSwitch
-    slackpenalties = [slack_value, slack_value]
-    sa_params = {
-        'initial_temperature_func': (lambda n: init_temp_mult * n),
-        'alfa': alfa,
-        'alfa_period_func': (lambda n: (2 * n) * alfa_period_mult),
-        'cutoff_func': (lambda n: (2 * n) * alfa_period_mult * cutoff_mult)
-    }
+    for tabu_length in [0, 1]:
+        for slack_value in [0.5, 1.0, 2.0, 5.0]:
+            for alfa_period_mult in [2, 4, 6, 8]:
+                for init_temp_mult in [0.1, 0.2, 0.5, 1, 2, 5]:
+                    # Vary parameters here
+                    if approach == 'jobarray':
+                        sp_class = JobArraySearchSpaceCombined
+                        instance_class = JobPropertiesInstance
+                        sp_params = {
+                            'infer_precedence': True,
+                            'fracs': {"swap": 1.0, "move": 0.0, "movepair": 0.0},
+                            'start_solution': start_solution
+                        }
+                    else:
+                        instance_class = JumpPointInstance
+                        sp_params = {
+                            'infer_precedence': True,
+                            'dist': dists.linear,
+                            'start_solution': start_solution,
+                            'tabu_length': tabu_length
+                        }
+                        if approach == 'jumppoint-lp':
+                            sp_class = JumpPointSearchSpaceLP
+                        elif approach == 'jumppoint-test':
+                            sp_class = JumpPointSearchSpaceTest
+                        elif approach == 'jumppoint-mix':
+                            sp_class = JumpPointSearchSpaceMix
+                    slackpenalties = [slack_value, slack_value]
+                    sa_params = {
+                        'initial_temperature_func': (lambda n: init_temp_mult * n),
+                        'alfa': alfa,
+                        'alfa_period_func': (lambda n: (2 * n) * alfa_period_mult),
+                        'cutoff_func': (lambda n: (2 * n) * alfa_period_mult * cutoff_mult)
+                    }
+                    
+                    outputdir = os.path.join(output_dir, f't{init_temp_mult:.1f}-a{alfa_period_mult:.0f}-s{slack_value:.1f}-l{tabu_length:.0f}')
 
-    if not os.path.isdir(output_dir):
-        os.mkdir(output_dir)
+                    if not os.path.isdir(outputdir):
+                        os.mkdir(outputdir)
 
-    run_on_instances(input_format, path, output_dir, label, verbose,
-                     sa_params, sp_class, sp_params, instance_class,
-                     slackpenalties)
+                    run_on_instances(input_format, path, outputdir, label, verbose,
+                                     sa_params, sp_class, sp_params, instance_class,
+                                     slackpenalties)
 
 
 def run_on_instances(input_format, path, output_dir, label, verbose,
@@ -354,8 +349,7 @@ def run_on_instances(input_format, path, output_dir, label, verbose,
             # Print solution (eventlist) to file
             np.savetxt(os.path.join(output_dir, instance_name,
                                     f"{partial_label}_solution.txt"),
-                       solution.eventlist,
-                       fmt='%.0f')
+                       solution.eventlist)
             with open(os.path.join(output_dir, instance_name,
                                    f"{partial_label}_solution.txt"),
                       "a") as txt:
@@ -364,27 +358,27 @@ def run_on_instances(input_format, path, output_dir, label, verbose,
                 )
 
             # Write timings to text file
-            # with open(os.path.join(output_dir, instance_name,
-                                   # f"{partial_label}_timings.txt"),
-                      # "w") as txt:
-                # txt.write(
-                    # f"""
-# Start solution (s): {search_space.timings["initial_solution"]}
-# Total time (s): {t_end - t_start}
-                    # """
-                # )
+            with open(os.path.join(output_dir, instance_name,
+                                   f"{partial_label}_timings.txt"),
+                      "w") as txt:
+                txt.write(
+                    f"""
+Start solution (s): {search_space.timings["initial_solution"]}
+Total time (s): {t_end - t_start}
+                    """
+                )
 
             # Write diagnostics to json files
-            # json.dump(
-                # search_space.timings,
-                # open(os.path.join(output_dir, instance_name,
-                                  # f"{partial_label}_timings.json"), 'w')
-            # )
-            # json.dump(
-                # search_space.operator_data,
-                # open(os.path.join(output_dir, instance_name,
-                                  # f"{partial_label}_operator_data.json"), 'w')
-            # )
+            json.dump(
+                search_space.timings,
+                open(os.path.join(output_dir, instance_name,
+                                  f"{partial_label}_timings.json"), 'w')
+            )
+            json.dump(
+                search_space.operator_data,
+                open(os.path.join(output_dir, instance_name,
+                                  f"{partial_label}_operator_data.json"), 'w')
+            )
 
             total_slack = solution.slack_value
             # total_slack = 0

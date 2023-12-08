@@ -1,6 +1,8 @@
 import os
 import time
 
+import numpy as np
+
 from .utils import sanitize_simulated_annealing_params
 
 
@@ -44,24 +46,39 @@ def simulated_annealing(search_space, params=None):
     cutoff = sanitized_parameters['cutoff']
     temperature = sanitized_parameters['initial_temperature']
     iters = cutoff
-    # prev_score = search_space.current.score
+    prev_score = search_space.current.score
+    prev_best = search_space.current.score
+    last_improve = 0
+    best_improve = [0]
 
     # Main loop
     for i in range(cutoff):
         # Select a random neighbor
-        fails, new_state = search_space.get_neighbor(temperature)
+        improved, new_state = search_space.get_neighbor(temperature)
 
-        if new_state is None:
+        if new_state is None or not new_state:
             # If we were unable to accept a candidate solution from all
             # available options, we give up.
             iters = i + 1
             break
+
+        if improved:
+            last_improve = 0
+            if search_space.best.score < prev_best:
+                best_improve.append(i)
+        else:
+            last_improve += 1
+            if last_improve >= alfa_period:
+                iters = i + 1
+                break
 
         # Update temperature for next iteration block
         if i > 0 and i % alfa_period == 0:
             temperature = temperature * alfa
 
     # Return solution
+    search_space.solve_and_write_best()
+    search_space.write_log("best_improve", best_improve)
     return iters, search_space.best
 
 
@@ -129,7 +146,7 @@ def simulated_annealing_verbose(search_space, params=None, output_dir=None):
             # Select a random neighbor
             fails, new_state = search_space.get_neighbor(temperature)
 
-            if new_state is None:
+            if new_state is None or not new_state:
                 # If we were unable to accept a candidate solution from 200
                 # options, we stop.
                 iters = i + 1
@@ -191,7 +208,7 @@ def variable_neighborhood_descent(search_space):
 
     # Main loop
     while new_state is not None:
-        while new_state is not None:
+        while new_state is not None or not new_state:
             new_state = search_space.get_neighbor_swap_hc()
             iters += 1
         new_state = search_space.get_neighbor_move_hc()
