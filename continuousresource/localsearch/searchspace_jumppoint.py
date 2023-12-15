@@ -419,8 +419,8 @@ class JumpPointSearchSpaceLP(JumpPointSearchSpace):
 
             # We do not have to compute the slack if the base is enough
             # to reject.
-            if new_base > max_acc_score:
-                continue
+            # if new_base > max_acc_score:
+                # continue
 
             new_slack = self._data.lp_update_compute(idx, new_idx)
             new_score = new_base + get_slack_value(new_slack)
