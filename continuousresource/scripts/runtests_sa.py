@@ -149,9 +149,18 @@ from continuousresource.localsearch import distributions as dists
     default='jumppoint-mix-min',
     help="SA approach."
 )
+@click.option(
+    '--seed',
+    '-s',
+    'seed',
+    required=False,
+    type=int,
+    default=None,
+    help="Optional seed used to seed te numpy random generator."
+)
 def main(input_format, path, output_dir, label, verbose, init_temp_mult, alfa,
          alfa_period_mult, cutoff_mult, start_solution, slack_value,
-         tabu_length, approach):
+         tabu_length, approach, seed):
     """Perform simulated annealing runs for all instances within the
     given directory.
 
@@ -186,6 +195,8 @@ def main(input_format, path, output_dir, label, verbose, init_temp_mult, alfa,
                 'jumppoint-mix', 'jumppoint-mix-min', 'jumppoint-simple',
                 'jumppoint-switch'}
         SA approach.
+    seed : int
+        Optional seed used to seed te numpy random generator.
     """
     # Vary parameters here
     if approach == 'jobarray':
@@ -223,6 +234,9 @@ def main(input_format, path, output_dir, label, verbose, init_temp_mult, alfa,
         'alfa_period_func': (lambda n: (2 * n) * alfa_period_mult),
         'cutoff_func': (lambda n: (2 * n) * alfa_period_mult * cutoff_mult)
     }
+
+    if seed is not None:
+        np.random.seed(seed)
 
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
