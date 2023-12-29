@@ -82,12 +82,16 @@ def simulated_annealing(search_space, params=None):
     return iters, search_space.best
 
 
-def simulated_annealing_verbose(search_space, params=None, output_dir=None):
+def simulated_annealing_verbose(search_space, params=None):
     """Routine performing Simulated Annealing local search. Produces more
-    output than the regulare simulated annealing routine focussing on
+    output than the regular simulated annealing routine focussing on
     individual iterations and time measurements.
 
-    The search stops when one of the following three conditions is met:
+    Note that intermediate reporting of scores is only guaranteed to be
+    correct when using a search space that evaluates candidate solutions
+    exactly.
+
+    The search stops when one of the following two conditions is met:
         - No candidate solution was accepted after trying all options
           for every neighborhood operators (check the documentation of
           each neighborhood operator to see what this entails).
@@ -109,8 +113,6 @@ def simulated_annealing_verbose(search_space, params=None, output_dir=None):
               before updating the temperature.
             - `cutoff` (int): Maximum number of iterations to run the
               simulated annealing process.
-    output_dir : string
-        Directory to put the verbose progression report.
 
     Returns
     -------
@@ -119,70 +121,56 @@ def simulated_annealing_verbose(search_space, params=None, output_dir=None):
     SearchSpaceState
         Best found solution.
     """
-    if output_dir is None:
-        output_dir = os.getcwd()
+    # Initialization
+    sanitized_parameters = sanitize_simulated_annealing_params(params)
+    alfa = sanitized_parameters['alfa']
+    alfa_period = sanitized_parameters['alfa_period']
+    cutoff = sanitized_parameters['cutoff']
+    temperature = sanitized_parameters['initial_temperature']
+    iters = cutoff
+    prev_score = search_space.current.score
+    prev_best = search_space.current.score
+    last_improve = 0
+    best_improve = [0]
 
-    with open(os.path.join(output_dir,
-                           "iterations.csv"), "w") as csv:
-        added_header = ""
-        if search_space.current.model.with_slack:
-            added_header = ";slack"
+    log_string = f'#;time;best_score;curr_score;slack\n'
+    start_time = time.perf_counter()
 
-        csv.write(
-            f'#;time;best_score;curr_score;rejected{added_header}\n'
+    # Main loop
+    for i in range(cutoff):
+        # Select a random neighbor
+        improved, new_state = search_space.get_neighbor(temperature)
+
+        log_string += (
+            f'{i};{time.perf_counter() - start_time:0.2f};'
+            f'{search_space.best.score};{search_space.current.score};'
+            f'{search_space.current.slack_value}\n'
         )
 
-        # Initialization
-        sanitized_parameters = sanitize_simulated_annealing_params(params)
-        alfa = sanitized_parameters['alfa']
-        alfa_period = sanitized_parameters['alfa_period']
-        cutoff = sanitized_parameters['cutoff']
-        temperature = sanitized_parameters['initial_temperature']
-        iters = cutoff
-        start_time = time.perf_counter()
+        if new_state is None or not new_state:
+            # If we were unable to accept a candidate solution from all
+            # available options, we give up.
+            iters = i + 1
+            break
 
-        # Main loop
-        for i in range(cutoff):
-            # Select a random neighbor
-            fails, new_state = search_space.get_neighbor(temperature)
-
-            if new_state is None or not new_state:
-                # If we were unable to accept a candidate solution from 200
-                # options, we stop.
+        if improved:
+            last_improve = 0
+            if search_space.best.score < prev_best:
+                best_improve.append(i)
+        else:
+            last_improve += 1
+            if last_improve >= alfa_period:
                 iters = i + 1
-
-                slack_string = ""
-                if search_space.current.model.with_slack:
-                    total_slack = 0
-                    for (label, value, weight) in search_space.current.slack:
-                        total_slack += value * weight
-                    slack_string = f";{total_slack}"
-
-                csv.write(
-                    f'{i};{time.perf_counter() - start_time:0.2f};'
-                    f'{search_space.best.score};{search_space.current.score};'
-                    f'{fails}{slack_string}\n'
-                )
                 break
 
-            slack_string = ""
-            if search_space.current.model.with_slack:
-                total_slack = 0
-                for (label, value, weight) in search_space.current.slack:
-                    total_slack += value * weight
-                slack_string = f";{total_slack}"
-
-            csv.write(
-                f'{i};{time.perf_counter() - start_time:0.2f};'
-                f'{search_space.best.score};{search_space.current.score};'
-                f'{fails}{slack_string}\n'
-            )
-
-            # Update temperature for next iteration block
-            if i > 0 and i % alfa_period == 0:
-                temperature = temperature * alfa
+        # Update temperature for next iteration block
+        if i > 0 and i % alfa_period == 0:
+            temperature = temperature * alfa
 
     # Return solution
+    search_space.solve_and_write_best()
+    search_space.write_string("iterations", log_string)
+    search_space.write_log("best_improve", best_improve)
     return iters, search_space.best
 
 

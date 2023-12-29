@@ -349,6 +349,11 @@ class JumpPointSearchSpace(SearchSpace):
         """Write any array-like object to a log file"""
         np.savetxt(os.path.join(self._logdir, f"{filename}.txt"), array, fmt=fmt)
 
+    def write_string(self, fname, string, ext='csv', mode='w'):
+        """Write any string to a csv file"""
+        with open(os.path.join(self._logdir, f"{fname}.{ext}"), mode) as f:
+            f.write(string)
+
 
 class JumpPointSearchSpaceLP(JumpPointSearchSpace):
     """Search space implementing the search strategy using only the LP

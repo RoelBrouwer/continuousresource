@@ -355,8 +355,7 @@ def run_on_instances(input_format, path, output_dir, label, verbose,
 
             if verbose:
                 iters, solution = simulated_annealing_verbose(
-                    search_space, sa_params,
-                    output_dir=os.path.join(output_dir, instance_name)
+                    search_space, sa_params
                 )
             else:
                 iters, solution = simulated_annealing(
